@@ -1,0 +1,15 @@
+{
+  "name": "cua-lark-agent-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell for the Feishu GUI testing agent",
+  "main": "desktop/main.js",
+  "scripts": {
+    "setup:python": "uv sync",
+    "desktop": "electron .",
+    "desktop:dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^41.3.0"
+  }
+}

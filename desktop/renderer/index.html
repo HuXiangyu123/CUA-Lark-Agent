@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lark GUI Console</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <section id="runOverlay" class="run-overlay" aria-live="polite">
+        <div class="run-overlay-head">
+          <div>
+            <p class="eyebrow">Live Task</p>
+            <h2 id="overlayTitle">Awaiting run</h2>
+          </div>
+          <span id="overlayCounter" class="run-overlay-counter">0/0</span>
+        </div>
+        <p id="overlayPrompt" class="run-overlay-prompt">
+          Start a task to see the live checklist and verification state.
+        </p>
+        <div class="run-overlay-meta">
+          <article class="hud-card">
+            <span class="stat-label">Stage</span>
+            <span id="overlayStage" class="hud-value">idle</span>
+          </article>
+          <article class="hud-card">
+            <span class="stat-label">Status</span>
+            <span id="overlayStatus" class="hud-value">waiting</span>
+          </article>
+        </div>
+        <ol id="todoList" class="todo-list"></ol>
+        <p id="overlayDetail" class="run-overlay-detail">
+          The desktop shell will switch into a compact run HUD while the task is executing.
+        </p>
+      </section>
+
+      <header class="hero">
+        <p class="eyebrow">Feishu Desktop Test Console</p>
+        <h1>Run GUI prompts without living in the terminal.</h1>
+        <p class="subcopy">
+          The panel hides itself during execution, activates Feishu, optionally resizes the target
+          window, and restores with the run result and trace path.
+        </p>
+      </header>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>macOS Permissions</h2>
+          <button id="refreshPermissionsBtn" class="ghost">Refresh Status</button>
+        </div>
+        <p id="permissionTarget" class="permission-target">
+          Checking which desktop host needs macOS permissions.
+        </p>
+        <div class="permission-grid">
+          <article class="permission-card">
+            <span class="stat-label">Accessibility</span>
+            <span id="accessibilityStatus" class="permission-status unknown">Checking</span>
+            <p class="permission-copy">
+              Required for focus, resize, click, drag, typing, and shortcut execution.
+            </p>
+          </article>
+          <article class="permission-card">
+            <span class="stat-label">Screen Recording</span>
+            <span id="screenStatus" class="permission-status unknown">Checking</span>
+            <p class="permission-copy">
+              Required for window screenshots and visual planning.
+            </p>
+          </article>
+        </div>
+        <p id="permissionHint" class="permission-hint">
+          The desktop shell will block the GUI run until both permissions are available.
+        </p>
+        <div class="actions permission-actions">
+          <button id="promptAccessibilityBtn" class="ghost">Prompt Accessibility</button>
+          <button id="openAccessibilityBtn" class="ghost">Open Accessibility</button>
+          <button id="openScreenBtn" class="ghost">Open Screen Recording</button>
+        </div>
+      </section>
+
+      <section class="panel panel-grid">
+        <div class="field">
+          <label for="targetApp">Target App</label>
+          <input id="targetApp" type="text" />
+        </div>
+        <div class="field">
+          <label for="maxSteps">Max Steps</label>
+          <input id="maxSteps" type="number" min="1" max="20" />
+        </div>
+        <div class="field">
+          <label for="guiPause">Action Pause</label>
+          <input id="guiPause" type="number" min="0" step="0.05" />
+        </div>
+        <div class="field">
+          <label for="windowWidth">Window Width</label>
+          <input id="windowWidth" type="number" min="600" />
+        </div>
+        <div class="field">
+          <label for="windowHeight">Window Height</label>
+          <input id="windowHeight" type="number" min="400" />
+        </div>
+        <div class="checks">
+          <label class="check">
+            <input id="hideDuringRun" type="checkbox" />
+            <span>Compact to corner during run</span>
+          </label>
+          <label class="check">
+            <input id="dryRun" type="checkbox" />
+            <span>Dry run</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Prompt</h2>
+          <div class="actions">
+            <button id="focusBtn" class="ghost">Focus Feishu</button>
+            <button id="resizeBtn" class="ghost">Apply Window Size</button>
+          </div>
+        </div>
+        <textarea id="prompt" rows="8"></textarea>
+        <div class="runbar">
+          <button id="runBtn" class="primary">Run Prompt</button>
+          <span id="statusPill" class="pill idle">Idle</span>
+        </div>
+      </section>
+
+      <section class="panel panel-grid compact">
+        <div class="stat">
+          <span class="stat-label">Window</span>
+          <span id="windowInfo" class="stat-value">Unknown</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Trace</span>
+          <span id="traceInfo" class="stat-value">Not run yet</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Last Result</span>
+          <span id="resultInfo" class="stat-value">Waiting</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Run Log</h2>
+          <button id="openTraceBtn" class="ghost" disabled>Open Trace</button>
+        </div>
+        <pre id="logView" class="log"></pre>
+      </section>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

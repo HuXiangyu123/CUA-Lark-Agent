@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+
+# Environment and local secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Node / Electron
+node_modules/
+lark-cli/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime outputs
+traces/
+logs/
+*.log
+lark-cli/span.log
+
+# Temporary / local scratch
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# External reference clones
+.external/
