@@ -69,7 +69,7 @@ class GuiPromptTest(unittest.TestCase):
             ),
         )
         self.assertIn("Do not submit yet", prompt)
-        self.assertIn("command+a", prompt)
+        self.assertIn("select all in the composer", prompt)
 
 
 if __name__ == "__main__":

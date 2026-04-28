@@ -1,5 +1,7 @@
 # CUA-Lark Agent
 
+> Windows deployment note: this repository now includes a Windows-compatible GUI route. If you are deploying or testing on Windows, start with [README_WINDOWS.md](./README_WINDOWS.md). The original notes below were written for the macOS-first version.
+
 Feishu desktop GUI testing agent with two execution paths:
 
 - `api`: call Feishu Open Platform abilities through `lark-cli`

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-GUI_ACTION_SYSTEM_PROMPT = """You are the GUI action-planning brain for a Feishu desktop GUI testing agent on macOS.
+GUI_ACTION_SYSTEM_PROMPT = """You are the GUI action-planning brain for a Feishu desktop GUI testing agent.
 
 You can only decide one next GUI action at a time.
 You must rely on the current screenshot and the recorded history.
@@ -80,7 +80,7 @@ JSON schema:
 """
 
 
-GUI_PERCEPTION_SYSTEM_PROMPT = """You are the GUI perception route for a Feishu desktop GUI testing agent on macOS.
+GUI_PERCEPTION_SYSTEM_PROMPT = """You are the GUI perception route for a Feishu desktop GUI testing agent.
 
 Look only at the current screenshot.
 Summarize the current visible UI state conservatively.
@@ -217,7 +217,7 @@ def _goal_specific_hints(goal: str, history_summary: str, run_state_summary: str
             [
                 "- The current composer text does not exactly match the target message yet.",
                 "- Do not submit yet. First correct the composer so the visible text exactly matches the target message.",
-                "- On macOS, a safe correction is often: hotkey `command+a`, then type the full target message again.",
+                "- A safe correction is often: select all in the composer, then type the full target message again.",
             ]
         )
 
@@ -226,7 +226,7 @@ def _goal_specific_hints(goal: str, history_summary: str, run_state_summary: str
             [
                 "- The baseline composer already contained stale draft text before this run.",
                 "- Do not treat that draft as fresh progress. First clear or replace it, then type the target message again.",
-                "- A safe reset sequence on macOS is usually: focus composer, hotkey `command+a`, then either backspace or type the full replacement text.",
+                "- A safe reset sequence is usually: focus composer, select all, then either backspace or type the full replacement text.",
             ]
         )
 

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -14,6 +16,20 @@ from openai import OpenAI
 
 from agent.gui.capture import ScreenCapture, ScreenshotArtifact
 from agent.gui.controller import GuiController
+from agent.gui.goals import (
+    classify_goal_kind as _classify_goal_kind,
+    extract_calendar_event_title as _extract_calendar_event_title,
+    extract_calendar_time_hint as _extract_calendar_time_hint,
+    extract_first_quoted_text as _extract_first_quoted_text,
+    extract_target_label as _extract_target_label,
+    extract_target_message as _extract_target_message,
+    looks_like_calendar_event_creation_goal as _looks_like_calendar_event_creation_goal,
+    looks_like_clear_composer_goal as _looks_like_clear_composer_goal,
+    looks_like_compose_without_send_goal as _looks_like_compose_without_send_goal,
+    looks_like_emoji_goal as _looks_like_emoji_goal,
+    looks_like_open_calendar_goal as _looks_like_open_calendar_goal,
+    looks_like_open_chat_goal as _looks_like_open_chat_goal,
+)
 from agent.gui.langchain_agents import LangChainGuiAgentSuite
 from agent.gui.prompts import (
     GUI_ACTION_SYSTEM_PROMPT,
@@ -81,6 +97,7 @@ class GuiRunState:
     previous_step_ok: bool | None = None
     compose_actions: int = 0
     submit_actions: int = 0
+    clear_actions: int = 0
     perception_stage: str = "observe"
     perception_signature: str = ""
     perception_repeat_count: int = 0
@@ -135,6 +152,7 @@ class GuiRunState:
             "previous_step_ok": self.previous_step_ok,
             "compose_actions": self.compose_actions,
             "submit_actions": self.submit_actions,
+            "clear_actions": self.clear_actions,
             "perception_stage": self.perception_stage,
             "perception_signature": self.perception_signature,
             "perception_repeat_count": self.perception_repeat_count,
@@ -315,6 +333,9 @@ class GuiRunner:
         self.max_steps = max_steps or int(_first_nonempty_env(("GUI_MAX_STEPS", "CUA_MAX_STEPS"), "12"))
         self.dry_run = dry_run if dry_run is not None else _env_flag(("GUI_DRY_RUN", "CUA_DRY_RUN"), False)
         self.pause_seconds = pause_seconds or float(_first_nonempty_env(("GUI_ACTION_PAUSE", "CUA_ACTION_PAUSE"), "0.5"))
+        self.min_perception_confidence = float(
+            _first_nonempty_env(("GUI_MIN_PERCEPTION_CONFIDENCE", "CUA_MIN_PERCEPTION_CONFIDENCE"), "0.25")
+        )
         self.target_app = _first_nonempty_env(("GUI_TARGET_APP", "CUA_TARGET_APP"), "Feishu")
         trace_root_value = trace_root or Path(_first_nonempty_env(("GUI_TRACE_DIR", "CUA_TRACE_DIR"), "traces"))
         self.trace_root = trace_root_value
@@ -340,6 +361,18 @@ class GuiRunner:
         initial_perception_raw = self._refresh_visual_state(goal, observation, history, window.app_name, run_state)
         recorder.write_text("step_00_perception.json", initial_perception_raw)
         recorder.set_initial_state(run_state.snapshot())
+        visual_stop_reason = self._visual_stop_reason(run_state)
+        if visual_stop_reason:
+            recorder.finish("blocked", visual_stop_reason, run_state.snapshot())
+            self._emit_progress(
+                recorder,
+                run_state,
+                event="finished",
+                step_index=0,
+                success=False,
+                message=visual_stop_reason,
+            )
+            return GuiRunResult(False, "blocked", visual_stop_reason, recorder.trace_dir, len(history))
         self._emit_progress(recorder, run_state, event="started", step_index=0, message="Captured the initial Feishu window and built the first visual state.")
         for step_index in range(1, self.max_steps + 1):
             decision, raw_response = self._plan(goal, observation, history, step_index, window.app_name, run_state)
@@ -391,6 +424,42 @@ class GuiRunner:
             observation = self.capture.capture(recorder.trace_dir, f"step_{step_index:02d}_after", region=window.region)
             perception_raw = self._refresh_visual_state(goal, observation, history, window.app_name, run_state)
             recorder.write_text(f"step_{step_index:02d}_perception.json", perception_raw)
+            visual_stop_reason = self._visual_stop_reason(run_state)
+            if visual_stop_reason:
+                step_record = {
+                    "step_index": step_index,
+                    "observation_path": str(observation.path),
+                    "observation_size": {"width": observation.width, "height": observation.height},
+                    "window": {
+                        "app_name": window.app_name,
+                        "x": window.x,
+                        "y": window.y,
+                        "width": window.width,
+                        "height": window.height,
+                    },
+                    "decision": decision.to_dict(),
+                    "action": decision.action.to_dict() if decision.action else None,
+                    "screen_action": screen_action.to_dict() if screen_action else None,
+                    "execution": execution.to_dict(),
+                    "visual_state": dict(run_state.last_visual_state),
+                    "state_before_action": state_before_action,
+                    "state_after_action": run_state.snapshot(),
+                    "blocked_reason": visual_stop_reason,
+                }
+                history.append(step_record)
+                recorder.append_step(step_record)
+                recorder.finish("blocked", visual_stop_reason, run_state.snapshot())
+                self._emit_progress(
+                    recorder,
+                    run_state,
+                    event="finished",
+                    step_index=step_index,
+                    decision=decision,
+                    execution=execution,
+                    success=False,
+                    message=visual_stop_reason,
+                )
+                return GuiRunResult(False, "blocked", visual_stop_reason, recorder.trace_dir, len(history))
 
             step_record = {
                 "step_index": step_index,
@@ -441,6 +510,23 @@ class GuiRunner:
         )
         return GuiRunResult(False, "max_steps_exceeded", reason, recorder.trace_dir, len(history))
 
+    def _visual_stop_reason(self, run_state: GuiRunState) -> str:
+        visual_state = run_state.last_visual_state
+        if not visual_state:
+            return ""
+        evidence = run_state.last_visual_evidence or str(visual_state.get("ui_summary", "")).strip()
+        if bool(visual_state.get("blocked", False)) or str(visual_state.get("stage", "")).strip().lower() == "blocked":
+            run_state.current_stage = "blocked"
+            return evidence or "The perception model marked the current screen as blocked or unusable."
+        if self.min_perception_confidence > 0 and run_state.perception_confidence < self.min_perception_confidence:
+            run_state.current_stage = "blocked"
+            return (
+                f"Perception confidence is too low ({run_state.perception_confidence:.2f} "
+                f"< {self.min_perception_confidence:.2f}); pausing before any further GUI actions. "
+                f"{evidence}".strip()
+            )
+        return ""
+
     def _emit_progress(
         self,
         recorder: TraceRecorder,
@@ -469,6 +555,7 @@ class GuiRunner:
             "perception_stable": run_state.perception_stable,
             "compose_actions": run_state.compose_actions,
             "submit_actions": run_state.submit_actions,
+            "clear_actions": run_state.clear_actions,
             "done_gate_ready": run_state.done_gate_ready,
             "done_gate_reason": run_state.done_gate_reason,
             "baseline_composer_dirty": run_state.baseline_composer_nonempty,
@@ -507,6 +594,10 @@ class GuiRunner:
     ) -> tuple[GuiDecision, str]:
         if _env_flag(("GUI_ENABLE_EMOJI_HEURISTIC", "CUA_ENABLE_EMOJI_HEURISTIC"), False):
             heuristic_decision = _maybe_apply_feishu_emoji_heuristic(goal, observation, history, step_index, app_name)
+            if heuristic_decision is not None:
+                return heuristic_decision, json.dumps(heuristic_decision.to_dict(), ensure_ascii=False, indent=2)
+        if run_state.goal_kind == "clear_composer":
+            heuristic_decision = _maybe_apply_clear_composer_heuristic(observation, history, run_state)
             if heuristic_decision is not None:
                 return heuristic_decision, json.dumps(heuristic_decision.to_dict(), ensure_ascii=False, indent=2)
 
@@ -723,9 +814,127 @@ def _normalize_decision_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _maybe_apply_clear_composer_heuristic(
+    observation: ScreenshotArtifact,
+    history: list[dict[str, Any]],
+    run_state: GuiRunState,
+) -> GuiDecision | None:
+    visual_state = run_state.last_visual_state or {}
+    if bool(visual_state.get("composer_empty", False)):
+        return GuiDecision.from_dict(
+            {
+                "status": "done",
+                "stage": "complete",
+                "current_state": "The composer is visually empty.",
+                "progress_assessment": "The draft has been cleared and no send action occurred.",
+                "previous_step_ok": True,
+                "success_criteria": "The current chat input box contains no draft text and no message is sent.",
+                "completion_evidence": run_state.last_visual_evidence or "The screenshot shows an empty composer.",
+                "done_reason": "The composer is empty and no send/submit action occurred.",
+                "workflow_steps": ["Focus composer", "Select all draft text", "Delete draft", "Verify empty composer"],
+                "active_step_index": 3,
+            }
+        )
+
+    recent_actions = [
+        ((item.get("action") or {}).get("target") or "")
+        for item in history
+        if isinstance(item, dict)
+    ]
+    focus_target = "clear composer focus"
+    select_target = "clear composer select all"
+    delete_target = "clear composer delete selection"
+    focus_count = recent_actions.count(focus_target)
+    select_count = recent_actions.count(select_target)
+    delete_count = recent_actions.count(delete_target)
+    max_delete_attempts = int(_first_nonempty_env(("GUI_CLEAR_MAX_DELETE_ATTEMPTS", "CUA_CLEAR_MAX_DELETE_ATTEMPTS"), "3"))
+    if delete_count >= max_delete_attempts:
+        visible_text = str(visual_state.get("composer_text", "")).strip()
+        return GuiDecision.from_dict(
+            {
+                "status": "blocked",
+                "stage": "blocked",
+                "current_state": f"The composer still appears non-empty after {delete_count} delete attempts.",
+                "progress_assessment": "The deterministic clear shortcut did not clear the draft.",
+                "previous_step_ok": False,
+                "success_criteria": "Manual intervention may be needed to clear the focused composer.",
+                "completion_evidence": f"Visible composer text after retries: {visible_text!r}",
+                "done_reason": "Could not verify an empty composer after repeated focus/Ctrl+A/Backspace attempts.",
+                "workflow_steps": ["Focus composer", "Select all draft text", "Delete draft", "Verify empty composer"],
+                "active_step_index": 3,
+            }
+        )
+
+    if focus_count <= delete_count:
+        # Click the left text-editing part of the composer. The center/right
+        # side of Feishu's composer often contains toolbar buttons, and Ctrl+A
+        # after clicking there can select the whole chat page instead.
+        composer_x = max(24, min(observation.width - 180, int(observation.width * 0.08)))
+        composer_y = max(1, observation.height - 45)
+        return GuiDecision.from_dict(
+            {
+                "status": "continue",
+                "stage": "compose",
+                "current_state": "The composer may contain draft text and should be focused before clearing.",
+                "progress_assessment": "Focusing the composer starts the deterministic clear flow.",
+                "previous_step_ok": True,
+                "success_criteria": "The message composer becomes focused so keyboard clearing shortcuts apply there.",
+                "workflow_steps": ["Focus composer", "Select all draft text", "Delete draft", "Verify empty composer"],
+                "active_step_index": 0,
+                "action": {
+                    "type": "click",
+                    "target": focus_target,
+                    "x": composer_x,
+                    "y": composer_y,
+                },
+            }
+        )
+
+    if select_count <= delete_count:
+        modifier = "command" if sys.platform == "darwin" else "ctrl"
+        return GuiDecision.from_dict(
+            {
+                "status": "continue",
+                "stage": "compose",
+                "current_state": "The composer is focused and any draft text should be selected.",
+                "progress_assessment": "Selecting all draft text avoids slow drag-selection and partial deletes.",
+                "previous_step_ok": True,
+                "success_criteria": "All draft text in the focused composer becomes selected.",
+                "workflow_steps": ["Focus composer", "Select all draft text", "Delete draft", "Verify empty composer"],
+                "active_step_index": 1,
+                "action": {
+                    "type": "hotkey",
+                    "target": select_target,
+                    "keys": [modifier, "a"],
+                },
+            }
+        )
+
+    if delete_count < select_count:
+        return GuiDecision.from_dict(
+            {
+                "status": "continue",
+                "stage": "compose",
+                "current_state": "The composer draft should be selected.",
+                "progress_assessment": "Deleting the selection should clear the composer without sending anything.",
+                "previous_step_ok": True,
+                "success_criteria": "The composer becomes empty or shows only its placeholder.",
+                "workflow_steps": ["Focus composer", "Select all draft text", "Delete draft", "Verify empty composer"],
+                "active_step_index": 2,
+                "action": {
+                    "type": "hotkey",
+                    "target": delete_target,
+                    "keys": ["backspace"],
+                },
+            }
+        )
+
+    return None
+
+
 def _build_initial_run_state(goal: str, observation: ScreenshotArtifact) -> GuiRunState:
     goal_kind = _classify_goal_kind(goal)
-    target_message = _extract_target_message(goal) if goal_kind == "send_message" else ""
+    target_message = _extract_target_message(goal) if goal_kind in {"send_message", "compose_message"} else ""
     run_state = GuiRunState(
         goal_kind=goal_kind,
         target_message=target_message,
@@ -781,7 +990,17 @@ def _apply_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState
         _refresh_done_gate(run_state)
         return
 
-    if run_state.goal_kind != "send_message" or not run_state.target_message:
+    if run_state.goal_kind == "clear_composer":
+        if visual_state.composer_empty:
+            run_state.current_stage = "verify"
+            _append_evidence(run_state, "Current screenshot shows the composer is empty.")
+        elif visual_state.composer_text:
+            run_state.current_stage = "compose"
+            _append_evidence(run_state, f"Current screenshot still shows draft text: {visual_state.composer_text!r}")
+        _refresh_done_gate(run_state)
+        return
+
+    if run_state.goal_kind not in {"send_message", "compose_message"} or not run_state.target_message:
         _refresh_done_gate(run_state)
         return
 
@@ -819,19 +1038,25 @@ def _apply_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState
     elif visual_state.composer_empty:
         _append_evidence(run_state, "Current screenshot shows an empty composer.")
 
-    if (
+    submitted_target_this_run = (
         run_state.submit_actions > 0
-        and run_state.target_message_visually_verified
-        and visual_state.sent_message_exact_match
-        and _normalize_text(visual_state.latest_visible_message) != _normalize_text(run_state.baseline_latest_visible_message)
-    ):
+        and (run_state.target_message_typed or run_state.target_message_visually_verified)
+    )
+    visible_new_or_typed_target = (
+        visual_state.sent_message_exact_match
+        and (
+            run_state.target_message_typed
+            or _normalize_text(visual_state.latest_visible_message) != _normalize_text(run_state.baseline_latest_visible_message)
+        )
+    )
+    if submitted_target_this_run and visible_new_or_typed_target:
         run_state.send_visually_confirmed = True
         run_state.current_stage = "verify"
-        _append_evidence(run_state, "Current screenshot shows the exact target message already sent in chat.")
-    elif run_state.submit_actions > 0 and run_state.target_message_visually_verified and visual_state.composer_empty:
+        _append_evidence(run_state, "Current screenshot shows the exact target message after this run submitted it.")
+    elif submitted_target_this_run and visual_state.composer_empty:
         run_state.send_visually_confirmed = True
         run_state.current_stage = "verify"
-        _append_evidence(run_state, "Composer cleared after submit and the exact target text had been visually verified.")
+        _append_evidence(run_state, "Composer cleared after this run typed and submitted the exact target text.")
     elif visual_state.sent_message_exact_match and run_state.submit_actions <= 0:
         _append_evidence(run_state, "The target message is visible in baseline chat history, but this run has not submitted anything yet.")
 
@@ -844,7 +1069,7 @@ def _apply_execution_state(run_state: GuiRunState, decision: GuiDecision, execut
         _refresh_done_gate(run_state)
         return
 
-    if run_state.goal_kind == "send_message":
+    if run_state.goal_kind in {"send_message", "compose_message"}:
         if _is_select_all_action(action) and run_state.composer_reset_required and not run_state.composer_reset_satisfied:
             run_state.composer_reset_started = True
             run_state.current_stage = "compose"
@@ -864,6 +1089,24 @@ def _apply_execution_state(run_state: GuiRunState, decision: GuiDecision, execut
             _append_evidence(run_state, f"Executed submit action during this run: {action.type}")
         else:
             run_state.current_stage = decision.stage or "navigate"
+    elif run_state.goal_kind == "clear_composer":
+        if action.type != "wait":
+            run_state.clear_actions += 1
+        if _is_submit_action(action):
+            run_state.submit_actions += 1
+            run_state.current_stage = "submit"
+            _append_evidence(run_state, f"Unexpected submit action during clear-composer run: {action.type}")
+        elif action.type == "click":
+            run_state.current_stage = "compose"
+            _append_evidence(run_state, "Focused the message composer before clearing the draft.")
+        elif _is_select_all_action(action):
+            run_state.current_stage = "compose"
+            _append_evidence(run_state, "Selected all visible draft text in the composer.")
+        elif _is_delete_text_action(action):
+            run_state.current_stage = "compose"
+            _append_evidence(run_state, "Deleted selected or focused draft text in the composer.")
+        else:
+            run_state.current_stage = decision.stage or "compose"
     elif run_state.goal_kind == "send_emoji":
         if action.target == "feishu composer smiley emoji button (heuristic)":
             run_state.current_stage = "compose"
@@ -907,7 +1150,7 @@ def _apply_execution_state(run_state: GuiRunState, decision: GuiDecision, execut
 def _done_gate_error(decision: GuiDecision, run_state: GuiRunState) -> str | None:
     if decision.status != "done":
         return None
-    if run_state.goal_kind not in {"send_message", "send_emoji", "open_chat", "open_calendar", "create_calendar_event"}:
+    if run_state.goal_kind not in {"send_message", "compose_message", "clear_composer", "send_emoji", "open_chat", "open_calendar", "create_calendar_event"}:
         return None
     if run_state.done_gate_ready:
         return None
@@ -942,9 +1185,13 @@ def _submit_gate_error(decision: GuiDecision, run_state: GuiRunState) -> str | N
     action = decision.action
     if decision.status != "continue" or action is None:
         return None
-    if run_state.goal_kind != "send_message" or not run_state.target_message:
-        return None
     if not _is_submit_action(action):
+        return None
+    if run_state.goal_kind == "clear_composer":
+        return "The goal is to clear an unsent draft; do not click send or submit."
+    if run_state.goal_kind == "compose_message":
+        return "The goal explicitly says to leave the message as an unsent draft; do not click send or submit."
+    if run_state.goal_kind != "send_message" or not run_state.target_message:
         return None
     if run_state.composer_reset_required and not run_state.composer_reset_satisfied:
         baseline_text = run_state.baseline_composer_text or "stale draft text"
@@ -973,12 +1220,51 @@ def _submit_gate_error(decision: GuiDecision, run_state: GuiRunState) -> str | N
 
 
 def _refresh_done_gate(run_state: GuiRunState) -> None:
+    if run_state.goal_kind == "clear_composer":
+        if run_state.submit_actions > 0:
+            run_state.done_gate_ready = False
+            run_state.done_gate_reason = "This clear-draft run executed a send/submit action, which violates the goal."
+            return
+        visual_state = run_state.last_visual_state or {}
+        if not bool(visual_state.get("composer_empty", False)):
+            run_state.done_gate_ready = False
+            run_state.done_gate_reason = "The composer is not visually empty yet."
+            return
+        run_state.done_gate_ready = True
+        run_state.done_gate_reason = "The composer is visually empty and no send/submit action occurred."
+        return
+
+    if run_state.goal_kind == "compose_message":
+        if run_state.submit_actions > 0:
+            run_state.done_gate_ready = False
+            run_state.done_gate_reason = "This draft-only run already executed a send/submit action, which violates the goal."
+            return
+        if run_state.compose_actions <= 0 or not run_state.target_message_typed:
+            run_state.done_gate_ready = False
+            run_state.done_gate_reason = "This run has not typed the exact target draft text yet."
+            return
+        if run_state.target_message and not run_state.target_message_visually_verified:
+            run_state.done_gate_ready = False
+            run_state.done_gate_reason = "This run has not visually verified the exact target draft text in the composer."
+            return
+        if not run_state.perception_stable:
+            run_state.done_gate_ready = False
+            run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
+            return
+        run_state.done_gate_ready = True
+        run_state.done_gate_reason = "This run typed and visually verified the exact draft text without sending it."
+        return
+
     if run_state.goal_kind == "send_message":
         if run_state.submit_actions <= 0:
             run_state.done_gate_ready = False
             run_state.done_gate_reason = "This run has not executed any send/submit action yet."
             return
-        if run_state.target_message and not run_state.target_message_visually_verified:
+        if (
+            run_state.target_message
+            and not run_state.target_message_visually_verified
+            and not (run_state.submit_actions > 0 and run_state.target_message_typed and run_state.send_visually_confirmed)
+        ):
             run_state.done_gate_ready = False
             run_state.done_gate_reason = (
                 "This run has not visually verified the exact target text in the composer before submit."
@@ -1090,51 +1376,6 @@ def _refresh_done_gate(run_state: GuiRunState) -> None:
     run_state.done_gate_reason = "Generic goal does not require a send-proof gate."
 
 
-def _classify_goal_kind(goal: str) -> str:
-    goal_text = goal.lower()
-    if _looks_like_emoji_goal(goal):
-        return "send_emoji"
-
-    if _looks_like_calendar_event_creation_goal(goal):
-        return "create_calendar_event"
-
-    if _looks_like_open_calendar_goal(goal):
-        return "open_calendar"
-
-    send_keywords = ("send", "发送", "发出")
-    message_keywords = ("message", "消息", "聊天", "chat", "群聊", "群里", "窗口")
-    target_message = _extract_target_message(goal)
-    if any(keyword in goal_text for keyword in send_keywords) and (
-        any(keyword in goal_text for keyword in message_keywords) or bool(target_message)
-    ):
-        return "send_message"
-    if _looks_like_open_chat_goal(goal):
-        return "open_chat"
-    return "generic"
-
-
-def _extract_target_message(goal: str) -> str:
-    quoted_patterns = [
-        r"[“\"]([^”\"]{1,200})[”\"]",
-        r"[']([^']{1,200})[']",
-    ]
-    for pattern in quoted_patterns:
-        match = re.search(pattern, goal)
-        if match:
-            return match.group(1).strip()
-
-    fallback_patterns = [
-        r"发送消息[:： ]+([^\n；;，,。]+)",
-        r"发送对应消息[:： ]+([^\n；;，,。]+)",
-        r"send message[: ]+([^\n;,.]+)",
-    ]
-    for pattern in fallback_patterns:
-        match = re.search(pattern, goal, flags=re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-    return ""
-
-
 def _summarize_run_state(run_state: GuiRunState) -> str:
     typed_preview = ", ".join(repr(text) for text in run_state.typed_texts[-2:]) or "(none)"
     evidence_preview = "; ".join(run_state.completion_evidence[-3:]) or "(none)"
@@ -1154,6 +1395,7 @@ def _summarize_run_state(run_state: GuiRunState) -> str:
             f"- Perception stage: {run_state.perception_stage}",
             f"- Compose actions this run: {run_state.compose_actions}",
             f"- Submit actions this run: {run_state.submit_actions}",
+            f"- Clear actions this run: {run_state.clear_actions}",
             f"- Perception stable: {run_state.perception_stable}",
             f"- Perception repeat count: {run_state.perception_repeat_count}/{run_state.perception_stable_after}",
             f"- Perception confidence: {run_state.perception_confidence:.2f}",
@@ -1303,10 +1545,44 @@ def _is_submit_action(action: Any) -> bool:
         if keys in (["command", "enter"], ["ctrl", "enter"]):
             return True
 
-    if action_type == "click" and any(keyword in target for keyword in ("send", "submit", "发送")):
+    if action_type == "click" and _target_looks_like_send_control(target):
         return True
 
     return False
+
+
+def _target_looks_like_send_control(target: str) -> bool:
+    explicit_send_control = any(
+        keyword in target
+        for keyword in (
+            "send button",
+            "send icon",
+            "submit button",
+            "blue send",
+            "发送按钮",
+            "发送图标",
+            "发送键",
+            "蓝色发送",
+        )
+    )
+    if explicit_send_control:
+        return True
+
+    if any(
+        keyword in target
+        for keyword in (
+            "composer",
+            "input",
+            "message box",
+            "message composer",
+            "placeholder",
+            "输入框",
+            "消息输入",
+            "发送给",
+        )
+    ):
+        return False
+    return any(keyword in target for keyword in ("send", "submit"))
 
 
 def _is_select_all_action(action: Any) -> bool:
@@ -1316,74 +1592,15 @@ def _is_select_all_action(action: Any) -> bool:
     return keys in (["command", "a"], ["ctrl", "a"])
 
 
+def _is_delete_text_action(action: Any) -> bool:
+    if getattr(action, "type", "") != "hotkey":
+        return False
+    keys = [str(key).lower() for key in (getattr(action, "keys", None) or [])]
+    return keys in (["backspace"], ["delete"])
+
+
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
-
-
-def _extract_target_label(goal: str, goal_kind: str) -> str:
-    if goal_kind in {"open_calendar", "create_calendar_event"}:
-        return "Calendar"
-    if goal_kind != "open_chat":
-        return ""
-
-    quoted = _extract_first_quoted_text(goal)
-    if quoted:
-        return quoted
-
-    patterns = [
-        r"(?:打开|进入|切换到|切到|click|open|switch to)[^\"“”'\n]{0,30}(?:群聊|聊天|chat|conversation)[:： ]+([^\n；;，,。]+)",
-        r"(?:群聊|聊天|chat|conversation)[:： ]+([^\n；;，,。]+)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, goal, flags=re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-    return ""
-
-
-def _extract_first_quoted_text(goal: str) -> str:
-    quoted_patterns = [
-        r"[“\"]([^”\"]{1,200})[”\"]",
-        r"[']([^']{1,200})[']",
-    ]
-    for pattern in quoted_patterns:
-        match = re.search(pattern, goal)
-        if match:
-            return match.group(1).strip()
-    return ""
-
-
-def _extract_calendar_event_title(goal: str, goal_kind: str) -> str:
-    if goal_kind != "create_calendar_event":
-        return ""
-
-    labeled_patterns = [
-        r"(?:标题为|标题是|event title|title is|title)\s*[:：]?\s*[“\"]?([^”\"\n]{1,120})[”\"]?",
-        r"(?:命名为|名称为)\s*[“\"]?([^”\"\n]{1,120})[”\"]?",
-    ]
-    for pattern in labeled_patterns:
-        match = re.search(pattern, goal, flags=re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-
-    quoted = _extract_first_quoted_text(goal)
-    return quoted
-
-
-def _extract_calendar_time_hint(goal: str, goal_kind: str) -> str:
-    if goal_kind != "create_calendar_event":
-        return ""
-
-    patterns = [
-        r"\b\d{1,2}:\d{2}\s?(?:am|pm)?(?:\s*[-–to]+\s*\d{1,2}:\d{2}\s?(?:am|pm)?)?",
-        r"\b\d{1,2}\s?(?:am|pm)\b",
-        r"\d{1,2}点(?:\d{1,2}分)?(?:\s*[-到至]+\s*\d{1,2}点(?:\d{1,2}分)?)?",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, goal, flags=re.IGNORECASE)
-        if match:
-            return match.group(0).strip()
-    return ""
 
 
 def _initialize_send_message_baseline(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
@@ -1711,38 +1928,6 @@ def _maybe_apply_feishu_emoji_heuristic(
     return None
 
 
-def _looks_like_emoji_goal(goal: str) -> bool:
-    text = goal.lower()
-    keywords = ("emoji", "smiley", "emoticon", "表情", "笑脸")
-    return any(keyword in text for keyword in keywords)
-
-
-def _looks_like_calendar_goal(goal: str) -> bool:
-    text = goal.lower()
-    return any(keyword in text for keyword in ("calendar", "日历", "日程"))
-
-
-def _looks_like_calendar_event_creation_goal(goal: str) -> bool:
-    text = goal.lower()
-    if not _looks_like_calendar_goal(goal):
-        return False
-    return any(keyword in text for keyword in ("create event", "new event", "创建event", "创建 event", "创建日程", "新建日程", "time slot", "时间节点", "时间槽"))
-
-
-def _looks_like_open_calendar_goal(goal: str) -> bool:
-    text = goal.lower()
-    if not _looks_like_calendar_goal(goal):
-        return False
-    return any(keyword in text for keyword in ("open", "打开", "进入", "切换", "切到", "go to"))
-
-
-def _looks_like_open_chat_goal(goal: str) -> bool:
-    text = goal.lower()
-    chat_keywords = ("chat", "群聊", "聊天", "会话", "conversation")
-    open_keywords = ("open", "switch", "click", "打开", "切换", "进入", "点开", "点击")
-    return any(keyword in text for keyword in chat_keywords) and any(keyword in text for keyword in open_keywords)
-
-
 def _looks_like_chat_window_view(primary_view: str) -> bool:
     view = _normalize_text(primary_view).lower()
     if not view:
@@ -1830,8 +2015,21 @@ def _extract_time_candidates_in_minutes(text: str) -> list[int]:
 
 
 def _image_to_data_url(path: Path) -> str:
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    try:
+        from PIL import Image  # type: ignore
+    except ImportError:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+
+    try:
+        with Image.open(path) as image:
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="JPEG", quality=78, optimize=True)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
+    except Exception:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
 
 
 def _summarize_history(history: list[dict[str, Any]]) -> str:

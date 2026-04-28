@@ -1,10 +1,9 @@
-"""Lark CUA Agent — interactive REPL powered by GPT-5.4."""
+"""Lark CUA Agent - interactive REPL powered by OpenAI-compatible models."""
 
 import os
 import sys
 import json
 import argparse
-import readline
 from pathlib import Path
 
 from openai import OpenAI
@@ -19,9 +18,16 @@ from agent.router import RouteMode, resolve_route
 # Maximum number of input history lines to keep
 _MAX_HISTORY = 100
 
+try:
+    import readline  # type: ignore
+except ImportError:
+    readline = None
+
 
 def _load_history():
     """Load persistent readline history from disk."""
+    if readline is None:
+        return
     histfile = Path.home() / ".lark-cua-history"
     if histfile.exists():
         try:
@@ -33,6 +39,8 @@ def _load_history():
 
 def _save_history():
     """Persist readline history to disk."""
+    if readline is None:
+        return
     histfile = Path.home() / ".lark-cua-history"
     try:
         readline.write_history_file(histfile)
@@ -52,7 +60,7 @@ def load_env():
     # .env is in the project root, two levels up from agent/main.py
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
-        with open(env_path) as f:
+        with open(env_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
@@ -96,13 +104,27 @@ def init_gui_client() -> tuple[OpenAI, str]:
     return OpenAI(api_key=api_key, base_url=api_base), model
 
 
-def build_gui_progress_hook():
+def build_gui_progress_hook(force_human: bool = False):
     """Optionally stream GUI progress events to stderr for desktop integration."""
-    if not _env_flag(("GUI_PROGRESS_STDERR", "CUA_PROGRESS_STDERR"), False):
+    emit_json = _env_flag(("GUI_PROGRESS_STDERR", "CUA_PROGRESS_STDERR"), False)
+    if not emit_json and not force_human:
         return None
 
     def _hook(payload: dict) -> None:
-        print(f"__GUI_PROGRESS__{json.dumps(payload, ensure_ascii=False)}", file=sys.stderr, flush=True)
+        if emit_json:
+            print(f"__GUI_PROGRESS__{json.dumps(payload, ensure_ascii=False)}", file=sys.stderr, flush=True)
+            return
+        event = payload.get("event", "")
+        step_index = payload.get("step_index", 0)
+        max_steps = payload.get("max_steps", "?")
+        action_type = payload.get("action_type") or "-"
+        action_target = payload.get("action_target") or ""
+        message = payload.get("message") or payload.get("current_stage") or ""
+        if action_target:
+            action = f"{action_type}: {action_target}"
+        else:
+            action = str(action_type)
+        print(f"[gui] step {step_index}/{max_steps} {event} action={action} {message}", file=sys.stderr, flush=True)
 
     return _hook
 
@@ -133,7 +155,7 @@ def repl(client: OpenAI, model: str, system_prompt: str, requested_mode: RouteMo
 
     _load_history()
     print("=" * 60)
-    print("Lark CUA Agent — powered by GPT-5.4 + lark-cli")
+    print("Lark CUA Agent - powered by OpenAI-compatible models + lark-cli")
     print("Type your request in Chinese or English.")
     print(f"Current mode: {requested_mode.value}")
     print("Type 'exit' or 'quit' to stop.")
@@ -255,7 +277,7 @@ def main():
             max_steps=args.max_steps,
             dry_run=args.dry_run,
             pause_seconds=args.pause,
-            progress_hook=build_gui_progress_hook(),
+            progress_hook=build_gui_progress_hook(args.progress),
         )
         result = runner.run(args.goal)
         if args.json_output:
@@ -383,6 +405,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json-output",
         action="store_true",
         help="Print structured JSON result instead of plain text",
+    )
+    gui_run_parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Print human-readable GUI progress to stderr while running",
     )
 
     return parser

@@ -18,7 +18,7 @@ let runWindowState = null
 const GUI_PROGRESS_PREFIX = '__GUI_PROGRESS__'
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const windowOptions = {
     width: DEFAULT_WINDOW.width,
     height: DEFAULT_WINDOW.height,
     minWidth: 380,
@@ -26,13 +26,18 @@ function createWindow() {
     backgroundColor: '#111111',
     title: 'Lark GUI Console',
     autoHideMenuBar: true,
-    titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
-  })
+  }
+
+  if (process.platform === 'darwin') {
+    windowOptions.titleBarStyle = 'hiddenInset'
+  }
+
+  mainWindow = new BrowserWindow(windowOptions)
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 }
@@ -73,7 +78,7 @@ ipcMain.handle('app:get-defaults', async () => {
 ipcMain.handle('app:focus-target', async (_, { appName }) => {
   try {
     const resolvedAppName = requireAppName(appName)
-    await runAppleScript(`tell application "${escapeAppleScript(resolvedAppName)}" to activate`)
+    await activateTargetWindow(resolvedAppName)
     return { ok: true, window: await getWindowInfo(resolvedAppName), permissions: await getPermissionState() }
   } catch (error) {
     return { ok: false, error: normalizeError(error), permissions: await getPermissionState() }
@@ -83,9 +88,7 @@ ipcMain.handle('app:focus-target', async (_, { appName }) => {
 ipcMain.handle('app:resize-target', async (_, { appName, width, height }) => {
   try {
     const resolvedAppName = requireAppName(appName)
-    await runAppleScript(
-      `tell application "System Events" to tell application process "${escapeAppleScript(resolvedAppName)}" to tell front window to set size to {${Number(width)}, ${Number(height)}}`
-    )
+    await resizeTargetWindow(resolvedAppName, Number(width), Number(height))
     return { ok: true, window: await getWindowInfo(resolvedAppName), permissions: await getPermissionState() }
   } catch (error) {
     return { ok: false, error: normalizeError(error), permissions: await getPermissionState() }
@@ -108,8 +111,9 @@ ipcMain.handle('app:check-permissions', async () => {
 ipcMain.handle('app:request-accessibility', async () => {
   if (process.platform !== 'darwin') {
     return {
-      ok: false,
-      error: normalizeError(createError('UNSUPPORTED_PLATFORM', 'Accessibility prompt is only supported on macOS.'))
+      ok: true,
+      prompted: false,
+      permissions: await getPermissionState({ forceRefresh: true })
     }
   }
 
@@ -122,6 +126,19 @@ ipcMain.handle('app:request-accessibility', async () => {
 })
 
 ipcMain.handle('app:open-system-settings', async (_, { pane }) => {
+  if (process.platform === 'win32') {
+    const windowsUrl =
+      pane === 'screen'
+        ? 'ms-settings:privacy-broadfilesystemaccess'
+        : 'ms-settings:easeofaccess-display'
+    try {
+      await shell.openExternal(windowsUrl)
+      return { ok: true, pane, url: windowsUrl }
+    } catch (error) {
+      return { ok: false, error: normalizeError(error) }
+    }
+  }
+
   const url = MACOS_SETTINGS_URLS[pane]
   if (!url) {
     return {
@@ -216,15 +233,13 @@ ipcMain.handle('app:run-prompt', async (_, payload) => {
   const compactDuringRun = Boolean(hideDuringRun)
 
   try {
-    await runAppleScript(`tell application "${escapeAppleScript(resolvedAppName)}" to activate`)
+    await activateTargetWindow(resolvedAppName)
     if (width && height) {
-      await runAppleScript(
-        `tell application "System Events" to tell application process "${escapeAppleScript(resolvedAppName)}" to tell front window to set size to {${Number(width)}, ${Number(height)}}`
-      )
+      await resizeTargetWindow(resolvedAppName, Number(width), Number(height))
     }
     if (compactDuringRun && mainWindow) {
       enterRunHudMode()
-      await runAppleScript(`tell application "${escapeAppleScript(resolvedAppName)}" to activate`)
+      await activateTargetWindow(resolvedAppName)
     }
 
     const result = await runGuiPrompt({
@@ -418,7 +433,45 @@ function runAppleScript(script) {
   })
 }
 
+function runPowerShell(script) {
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], { cwd: ROOT }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || stdout || error.message))
+        return
+      }
+      resolve(stdout.trim())
+    })
+  })
+}
+
+function activateTargetWindow(appName) {
+  if (process.platform === 'win32') {
+    return runPowerShell(windowsWindowScript(appName, { action: 'activate' }))
+  }
+  return runAppleScript(`tell application "${escapeAppleScript(appName)}" to activate`)
+}
+
+function resizeTargetWindow(appName, width, height) {
+  if (process.platform === 'win32') {
+    return runPowerShell(windowsWindowScript(appName, { action: 'resize', width, height }))
+  }
+  return runAppleScript(
+    `tell application "System Events" to tell application process "${escapeAppleScript(appName)}" to tell front window to set size to {${Number(width)}, ${Number(height)}}`
+  )
+}
+
 async function getWindowInfo(appName) {
+  if (process.platform === 'win32') {
+    const output = await runPowerShell(windowsWindowScript(appName, { action: 'info' }))
+    const data = JSON.parse(output)
+    return {
+      x: data.x,
+      y: data.y,
+      width: data.width,
+      height: data.height
+    }
+  }
   const output = await runAppleScript(
     listWindowsScript(appName)
   )
@@ -433,6 +486,74 @@ async function getWindowInfo(appName) {
     width: parts[2],
     height: parts[3]
   }
+}
+
+function windowsWindowScript(appName, options) {
+  const appLiteral = psSingleQuote(appName)
+  const actionLiteral = psSingleQuote(options.action)
+  const width = Number(options.width || 0)
+  const height = Number(options.height || 0)
+  return `
+$ErrorActionPreference = 'Stop'
+$appName = '${appLiteral}'
+$action = '${actionLiteral}'
+$targetWidth = ${width}
+$targetHeight = ${height}
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32Window {
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+}
+public struct RECT {
+  public int Left;
+  public int Top;
+  public int Right;
+  public int Bottom;
+}
+"@
+$candidates = @($appName)
+if ($appName.ToLowerInvariant() -in @('feishu', 'lark')) {
+  $candidates += @('飞书', 'Lark')
+}
+$processes = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle }
+$window = $null
+foreach ($candidate in $candidates) {
+  $window = $processes | Where-Object { $_.MainWindowTitle -like "*$candidate*" } | Sort-Object @{ Expression = { $_.MainWindowTitle.Length } } | Select-Object -First 1
+  if ($window) { break }
+}
+if (-not $window) {
+  $preview = ($processes | Select-Object -First 10 -ExpandProperty MainWindowTitle) -join ', '
+  throw "No usable window found for '$appName'. Open the target app first or set GUI_TARGET_APP to part of its window title. Visible windows: $preview"
+}
+$handle = $window.MainWindowHandle
+[Win32Window]::ShowWindow($handle, 9) | Out-Null
+if ($action -eq 'activate' -or $action -eq 'resize') {
+  [Win32Window]::SetForegroundWindow($handle) | Out-Null
+  Start-Sleep -Milliseconds 200
+}
+$rect = New-Object RECT
+[Win32Window]::GetWindowRect($handle, [ref]$rect) | Out-Null
+if ($action -eq 'resize' -and $targetWidth -gt 0 -and $targetHeight -gt 0) {
+  [Win32Window]::MoveWindow($handle, $rect.Left, $rect.Top, $targetWidth, $targetHeight, $true) | Out-Null
+  Start-Sleep -Milliseconds 200
+  [Win32Window]::GetWindowRect($handle, [ref]$rect) | Out-Null
+}
+[pscustomobject]@{
+  x = $rect.Left
+  y = $rect.Top
+  width = $rect.Right - $rect.Left
+  height = $rect.Bottom - $rect.Top
+  title = $window.MainWindowTitle
+} | ConvertTo-Json -Compress
+`.trim()
+}
+
+function psSingleQuote(value) {
+  return String(value).replace(/'/g, "''")
 }
 
 async function getPermissionState({ forceRefresh = false } = {}) {

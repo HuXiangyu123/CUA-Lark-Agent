@@ -6,8 +6,8 @@
   "main": "desktop/main.js",
   "scripts": {
     "setup:python": "uv sync",
-    "desktop": "electron .",
-    "desktop:dev": "electron ."
+    "desktop": "node desktop/launch-electron.cjs",
+    "desktop:dev": "node desktop/launch-electron.cjs"
   },
   "devDependencies": {
     "electron": "^41.3.0"

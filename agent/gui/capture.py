@@ -69,6 +69,39 @@ class ScreenCapture:
                 scale_y=pixel_height / max(screen_height, 1),
             )
 
+        if sys.platform == "win32":
+            image, virtual_origin, virtual_size = _grab_windows_desktop()
+            if region is not None:
+                x, y, width, height = region
+                origin_x, origin_y = virtual_origin
+                image = image.crop((x - origin_x, y - origin_y, x - origin_x + width, y - origin_y + height))
+            image.save(path)
+            pixel_width, pixel_height = _read_image_size(path)
+            if region is not None:
+                x, y, width, height = region
+                return ScreenshotArtifact(
+                    path=path,
+                    width=pixel_width,
+                    height=pixel_height,
+                    origin_x=x,
+                    origin_y=y,
+                    screen_width=width,
+                    screen_height=height,
+                    scale_x=pixel_width / max(width, 1),
+                    scale_y=pixel_height / max(height, 1),
+                )
+            return ScreenshotArtifact(
+                path=path,
+                width=pixel_width,
+                height=pixel_height,
+                origin_x=virtual_origin[0],
+                origin_y=virtual_origin[1],
+                screen_width=virtual_size[0],
+                screen_height=virtual_size[1],
+                scale_x=pixel_width / max(virtual_size[0], 1),
+                scale_y=pixel_height / max(virtual_size[1], 1),
+            )
+
         pyautogui = _load_pyautogui()
         image = pyautogui.screenshot()
         if region is not None:
@@ -151,6 +184,33 @@ def _load_pyautogui():
     except ImportError as exc:
         raise RuntimeError("pyautogui is required for non-macOS screen capture") from exc
     return pyautogui
+
+
+def _grab_windows_desktop():
+    try:
+        from PIL import ImageGrab  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError("Pillow ImageGrab is required for Windows screen capture") from exc
+
+    origin_x, origin_y, width, height = _windows_virtual_screen_bounds()
+    return ImageGrab.grab(all_screens=True), (origin_x, origin_y), (width, height)
+
+
+def _windows_virtual_screen_bounds() -> tuple[int, int, int, int]:
+    try:
+        import ctypes
+    except ImportError:
+        pyautogui = _load_pyautogui()
+        size = pyautogui.size()
+        return 0, 0, int(size.width), int(size.height)
+
+    user32 = ctypes.windll.user32
+    return (
+        int(user32.GetSystemMetrics(76)),  # SM_XVIRTUALSCREEN
+        int(user32.GetSystemMetrics(77)),  # SM_YVIRTUALSCREEN
+        int(user32.GetSystemMetrics(78)),  # SM_CXVIRTUALSCREEN
+        int(user32.GetSystemMetrics(79)),  # SM_CYVIRTUALSCREEN
+    )
 
 
 def _maybe_resize_capture(path: Path) -> None:

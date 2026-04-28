@@ -6,6 +6,7 @@ from agent.gui.window import (
     WindowInfo,
     _parse_window_list,
     _select_main_window,
+    _titlebar_click_point,
     translate_action_from_image_to_screen,
     translate_action_to_screen,
 )
@@ -50,6 +51,10 @@ class GuiWindowTest(unittest.TestCase):
     def test_select_main_window_prefers_largest_area(self):
         selected = _select_main_window([(658, 756, 397, 28), (7, 192, 1161, 636)])
         self.assertEqual(selected, (7, 192, 1161, 636))
+
+    def test_titlebar_click_point_uses_safe_top_center(self):
+        self.assertEqual(_titlebar_click_point(100, 200, 1000, 700), (600, 223))
+        self.assertEqual(_titlebar_click_point(10, 20, 120, 28), (70, 32))
 
 
 if __name__ == "__main__":

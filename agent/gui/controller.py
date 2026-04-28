@@ -60,7 +60,11 @@ class GuiController:
         elif action.type == "type":
             self._type_text(pyautogui, action.text or "")
         elif action.type == "hotkey":
-            pyautogui.hotkey(*(action.keys or []))
+            keys = action.keys or []
+            if len(keys) == 1:
+                pyautogui.press(keys[0])
+            else:
+                pyautogui.hotkey(*keys)
         elif action.type == "wait":
             time.sleep((action.duration_ms or 1000) / 1000)
         else:
@@ -95,7 +99,7 @@ class GuiController:
         if sys.platform == "darwin":
             self._paste_text_mac(pyautogui, text)
             return
-        pyautogui.write(text, interval=0.02)
+        self._paste_text_cross_platform(pyautogui, text)
 
     def _paste_text_mac(self, pyautogui, text: str) -> None:
         previous_clipboard = subprocess.run(
@@ -109,3 +113,28 @@ class GuiController:
         pyautogui.hotkey("command", "v")
         time.sleep(max(self.pause_seconds, 0.08))
         subprocess.run(["pbcopy"], input=previous_clipboard, text=True, check=False)
+
+    def _paste_text_cross_platform(self, pyautogui, text: str) -> None:
+        try:
+            import pyperclip  # type: ignore
+        except ImportError:
+            pyautogui.write(text, interval=0.02)
+            return
+
+        previous_clipboard = ""
+        try:
+            previous_clipboard = pyperclip.paste()
+        except Exception:
+            previous_clipboard = ""
+
+        pyperclip.copy(text)
+        time.sleep(max(self.pause_seconds, 0.08))
+        if sys.platform == "win32":
+            pyautogui.hotkey("ctrl", "v")
+        else:
+            pyautogui.hotkey("ctrl", "v")
+        time.sleep(max(self.pause_seconds, 0.08))
+        try:
+            pyperclip.copy(previous_clipboard)
+        except Exception:
+            pass

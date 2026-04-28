@@ -11,6 +11,9 @@ dependencies = [
   "pydantic>=2.7.4",
   "python-dotenv>=1.0.0",
   "pyautogui>=0.9.54",
+  "pygetwindow>=0.0.9",
+  "pyperclip>=1.9.0",
+  "pillow>=12.2.0",
 ]
 
 [tool.uv]

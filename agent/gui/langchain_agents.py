@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from typing import Any, Literal
 
-from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 
@@ -68,7 +69,14 @@ class PerceptionRouteStateModel(BaseModel):
 
 
 class LangChainGuiAgentSuite:
-    """Wrap two structured LangChain agents for perception and action routing."""
+    """Wrap two structured vision agents for perception and action routing.
+
+    This intentionally calls the OpenAI-compatible client directly instead of
+    LangChain's agent wrapper. Some providers support vision reliably through
+    the streaming Responses API but return an empty final ``output`` object for
+    non-streaming image requests, so the response text is collected from stream
+    deltas.
+    """
 
     def __init__(
         self,
@@ -79,62 +87,131 @@ class LangChainGuiAgentSuite:
         perception_system_prompt: str,
         action_system_prompt: str,
     ):
-        common_kwargs = {
-            "model": model,
-        }
-        if api_key:
-            common_kwargs["api_key"] = api_key
-        if base_url:
-            common_kwargs["base_url"] = base_url
-        perception_model = ChatOpenAI(temperature=0.0, **common_kwargs)
-        action_model = ChatOpenAI(temperature=0.2, **common_kwargs)
-        self.perception_agent = create_agent(
-            model=perception_model,
-            tools=[],
-            system_prompt=perception_system_prompt,
-            response_format=PerceptionRouteStateModel,
-        )
-        self.action_agent = create_agent(
-            model=action_model,
-            tools=[],
-            system_prompt=action_system_prompt,
-            response_format=ActionRouteDecisionModel,
-        )
+        self.model = model
+        timeout = float(os.environ.get("GUI_VLM_TIMEOUT_SECONDS", os.environ.get("CUA_VLM_TIMEOUT_SECONDS", "90")))
+        self.client = OpenAI(api_key=api_key or "missing-api-key", base_url=base_url, timeout=timeout)
+        self.perception_system_prompt = perception_system_prompt
+        self.action_system_prompt = action_system_prompt
 
     def perceive(self, prompt: str, data_url: str) -> tuple[PerceptionRouteStateModel, str]:
-        result = self.perception_agent.invoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": data_url}},
-                        ],
-                    }
-                ]
-            }
+        raw = self._complete_json(
+            system_prompt=self.perception_system_prompt,
+            prompt=_json_prompt(prompt, PerceptionRouteStateModel),
+            data_url=data_url,
+            temperature=0.0,
         )
-        structured = result.get("structured_response")
-        if not isinstance(structured, PerceptionRouteStateModel):
-            raise RuntimeError(f"perception agent did not return structured_response: {result!r}")
+        payload = _extract_json_object(raw)
+        structured = PerceptionRouteStateModel.model_validate(payload)
         return structured, json.dumps(structured.model_dump(), ensure_ascii=False, indent=2)
 
     def decide(self, prompt: str, data_url: str) -> tuple[ActionRouteDecisionModel, str]:
-        result = self.action_agent.invoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": data_url}},
-                        ],
-                    }
-                ]
-            }
+        raw = self._complete_json(
+            system_prompt=self.action_system_prompt,
+            prompt=_json_prompt(prompt, ActionRouteDecisionModel),
+            data_url=data_url,
+            temperature=0.2,
         )
-        structured = result.get("structured_response")
-        if not isinstance(structured, ActionRouteDecisionModel):
-            raise RuntimeError(f"action agent did not return structured_response: {result!r}")
+        payload = _extract_json_object(raw)
+        structured = ActionRouteDecisionModel.model_validate(payload)
         return structured, json.dumps(structured.model_dump(), ensure_ascii=False, indent=2)
+
+    def _complete_json(self, *, system_prompt: str, prompt: str, data_url: str, temperature: float) -> str:
+        try:
+            return self._complete_json_responses_stream(
+                system_prompt=system_prompt,
+                prompt=prompt,
+                data_url=data_url,
+                temperature=temperature,
+            )
+        except Exception as responses_error:
+            try:
+                return self._complete_json_chat(
+                    system_prompt=system_prompt,
+                    prompt=prompt,
+                    data_url=data_url,
+                    temperature=temperature,
+                )
+            except Exception as chat_error:
+                raise RuntimeError(
+                    "VLM request failed with both Responses streaming and Chat Completions. "
+                    f"Responses error: {responses_error}. Chat error: {chat_error}"
+                ) from chat_error
+
+    def _complete_json_responses_stream(self, *, system_prompt: str, prompt: str, data_url: str, temperature: float) -> str:
+        stream = self.client.responses.create(
+            model=self.model,
+            instructions=system_prompt,
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": data_url},
+                    ],
+                }
+            ],
+            text={"format": {"type": "json_object"}},
+            max_output_tokens=4096,
+            stream=True,
+        )
+        chunks: list[str] = []
+        for event in stream:
+            event_type = getattr(event, "type", "")
+            if event_type == "response.output_text.delta":
+                chunks.append(getattr(event, "delta", "") or "")
+            elif event_type == "response.failed":
+                response = getattr(event, "response", None)
+                error = getattr(response, "error", None)
+                raise RuntimeError(error or "response.failed")
+        content = "".join(chunks).strip()
+        if not content:
+            raise RuntimeError("model returned empty streamed content")
+        return content
+
+    def _complete_json_chat(self, *, system_prompt: str, prompt: str, data_url: str, temperature: float) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ],
+            response_format={"type": "json_object"},
+            temperature=temperature,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise RuntimeError("model returned empty content")
+        return content
+
+
+def _json_prompt(prompt: str, model_type: type[BaseModel]) -> str:
+    schema = model_type.model_json_schema()
+    return (
+        f"{prompt}\n\n"
+        "Return only one valid JSON object. Do not wrap it in Markdown. "
+        "The JSON object must match this schema:\n"
+        f"{json.dumps(schema, ensure_ascii=False)}"
+    )
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
+        stripped = re.sub(r"\s*```$", "", stripped)
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
+        if not match:
+            raise
+        payload = json.loads(match.group(0))
+    if not isinstance(payload, dict):
+        raise ValueError("model response must be a JSON object")
+    return payload
