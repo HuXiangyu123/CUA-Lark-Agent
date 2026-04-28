@@ -1,6 +1,6 @@
 # CUA-Lark Agent
 
-> Windows deployment note: this repository now includes a Windows-compatible GUI route. If you are deploying or testing on Windows, start with [README_WINDOWS.md](./README_WINDOWS.md). The original notes below were written for the macOS-first version.
+> Windows deployment note: this repository now includes a Windows-compatible GUI route. If you are deploying or testing on Windows, start with [README_WINDOWS.md](./README_WINDOWS.md). For context handoff between AI coding sessions, use [DEVELOPMENT_HANDOFF.md](./DEVELOPMENT_HANDOFF.md). The original notes below were written for the macOS-first version.
 
 Feishu desktop GUI testing agent with two execution paths:
 

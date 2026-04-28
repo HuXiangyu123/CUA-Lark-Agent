@@ -2,6 +2,8 @@
 
 这份文档记录当前项目在 Windows 上的部署、配置、运行和测试方法。原项目偏 macOS 环境，本版本已补齐 Windows 下的飞书/Lark 桌面 GUI 自动化能力：通过窗口截图、多模态模型理解界面，再用真实鼠标和键盘完成操作。
 
+如果要新开 Codex/ChatGPT 上下文继续开发，请先看 [DEVELOPMENT_HANDOFF.md](./DEVELOPMENT_HANDOFF.md)，里面有可直接复制的新上下文交接模板。
+
 当前 Windows GUI 路线已经围绕以下场景做过测试：
 
 - 截取并理解当前飞书窗口
