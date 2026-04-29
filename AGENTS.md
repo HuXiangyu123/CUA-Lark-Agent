@@ -18,6 +18,7 @@ The current priority is Windows support for Feishu desktop GUI workflows. The lo
 - `run.py`: actual Python entry point. It delegates to `agent.main:main`.
 - `agent/main.py`: CLI parser, `.env` loading, REPL/API/GUI mode dispatch.
 - `agent/gui/loop.py`: main observe -> perceive -> plan -> act -> verify orchestration. High risk; avoid broad edits without tests.
+- `agent/gui/chat_flow.py`: open-chat visual state and completion gate helpers.
 - `agent/gui/message_flow.py`: message composer flow helpers, including pending-message text, stale draft reset, send/compose gates, and message visual/execution state updates.
 - `agent/gui/calendar_flow.py`: calendar flow helpers, including calendar visual state updates, event creation gates, time matching, and calendar action classification.
 - `agent/gui/goals.py`: goal classification and target extraction, e.g. send message, clear composer, open chat/calendar, create event.
@@ -40,6 +41,7 @@ The current priority is Windows support for Feishu desktop GUI workflows. The lo
 - Do not commit generated/local directories: `.venv/`, `node_modules/`, `lark-cli/node_modules/`, `traces/`, `__pycache__/`.
 - `CUA-Lark-TestCases/` is local test data for now. It is excluded through `.git/info/exclude`; do not add it unless explicitly asked.
 - Prefer targeted changes. `agent/gui/loop.py` is large and stateful; read relevant tests before editing completion gates.
+- Follow `docs/AI_CODING_GUIDE.md` for AI-assisted code changes. In particular, keep `agent/gui/loop.py` as orchestration and put product/workflow-specific rules in focused modules.
 - For GUI features, preserve the rule: the model proposes one action at a time, but code validates bounds, records run state, and gates completion.
 - Do not trust old chat assumptions over current code. If they conflict, current code wins.
 - When touching Chinese strings, verify with Python UTF-8 reads, not only PowerShell `Get-Content`, because PowerShell may display mojibake even when the file is correct.
@@ -88,7 +90,7 @@ Then read only the files relevant to the task:
 
 - Runtime/CLI issue: `agent/main.py`, `run.py`.
 - Goal parsing issue: `agent/gui/goals.py`, related tests in `tests/test_gui_loop.py`.
-- Completion gate issue: `agent/gui/loop.py`, `agent/gui/message_flow.py`, `agent/gui/calendar_flow.py`, `tests/test_gui_loop.py`.
+- Completion gate issue: `agent/gui/loop.py`, `agent/gui/chat_flow.py`, `agent/gui/message_flow.py`, `agent/gui/calendar_flow.py`, `tests/test_gui_loop.py`.
 - Screenshot/window issue: `agent/gui/capture.py`, `agent/gui/window.py`, `tests/test_gui_window.py`.
 - VLM/API issue: `agent/gui/langchain_agents.py`, `.env.example`, `README_WINDOWS.md`.
 
@@ -101,7 +103,7 @@ uv run python -m unittest discover -s tests
 Use focused py_compile when changing entrypoints or syntax-sensitive files:
 
 ```powershell
-uv run python -m py_compile run.py agent\gui\loop.py agent\gui\message_flow.py agent\gui\calendar_flow.py agent\gui\goals.py
+uv run python -m py_compile run.py agent\gui\loop.py agent\gui\chat_flow.py agent\gui\message_flow.py agent\gui\calendar_flow.py agent\gui\goals.py
 ```
 
 ## Suggested New-Context Start

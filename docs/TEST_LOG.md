@@ -5,7 +5,7 @@ This is a compact test/debug record. Do not paste raw logs here; keep only infor
 Last local verification during this handoff:
 
 ```powershell
-uv run python -m py_compile run.py agent\gui\dpi.py agent\gui\capture.py agent\gui\window.py agent\gui\controller.py agent\gui\loop.py agent\gui\message_flow.py agent\gui\calendar_flow.py
+uv run python -m py_compile run.py agent\gui\dpi.py agent\gui\capture.py agent\gui\window.py agent\gui\controller.py agent\gui\loop.py agent\gui\chat_flow.py agent\gui\message_flow.py agent\gui\calendar_flow.py
 uv run python -m unittest discover -s tests
 ```
 
@@ -266,7 +266,7 @@ Residual risks:
 How tested:
 
 ```powershell
-uv run python -m py_compile agent\gui\loop.py agent\gui\message_flow.py agent\gui\calendar_flow.py tests\test_gui_loop.py
+uv run python -m py_compile agent\gui\loop.py agent\gui\chat_flow.py agent\gui\message_flow.py agent\gui\calendar_flow.py tests\test_gui_loop.py
 uv run python -m unittest tests.test_gui_loop
 uv run python -m unittest discover -s tests
 ```
@@ -280,6 +280,7 @@ Fix/refactor record:
 
 - Added `agent/gui/message_flow.py` for message compose/send visual state, execution state, pending text reset, submit gate, and done gate helpers.
 - Added `agent/gui/calendar_flow.py` for calendar visual state, calendar done gates, action classification, and time matching helpers.
+- Added `agent/gui/chat_flow.py` for open-chat visual state and completion gate helpers.
 - Kept `agent/gui/loop.py` as the orchestration layer with compatibility wrappers where tests/imports still use underscored helpers.
 - Added regression coverage that a non-empty composer is focused, selected, cleared, and only then receives the pending message text.
 

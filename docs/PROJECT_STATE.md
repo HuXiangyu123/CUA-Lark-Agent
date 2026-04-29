@@ -25,7 +25,7 @@ Implemented/available in the current code:
 - Low-level manual actions: click, double click, right click, drag, scroll, type, hotkey, wait.
 - GUI one-shot runner with perception/action model calls and trace output.
 - Goal classification in `agent/gui/goals.py`.
-- GUI loop refactor started: `agent/gui/loop.py` now keeps orchestration while message-specific gates live in `agent/gui/message_flow.py` and calendar-specific gates live in `agent/gui/calendar_flow.py`.
+- GUI loop refactor started: `agent/gui/loop.py` now keeps orchestration while chat-specific gates live in `agent/gui/chat_flow.py`, message-specific gates live in `agent/gui/message_flow.py`, and calendar-specific gates live in `agent/gui/calendar_flow.py`.
 - Message send/compose flow now tracks a pending message text and deterministically focuses, selects, clears, then retypes when the composer already contains stale or mismatched text.
 - Completion gates for:
   - `send_message`
@@ -59,7 +59,7 @@ Most recent local commit after this pass:
 Verified locally in this handoff pass:
 
 ```powershell
-uv run python -m py_compile run.py agent\gui\dpi.py agent\gui\capture.py agent\gui\window.py agent\gui\controller.py agent\gui\loop.py agent\gui\message_flow.py agent\gui\calendar_flow.py
+uv run python -m py_compile run.py agent\gui\dpi.py agent\gui\capture.py agent\gui\window.py agent\gui\controller.py agent\gui\loop.py agent\gui\chat_flow.py agent\gui\message_flow.py agent\gui\calendar_flow.py
 uv run python -m unittest discover -s tests
 ```
 
@@ -201,6 +201,7 @@ Reconfirm in every new context:
 - `.env.example`: safe configuration template.
 - `agent/main.py`: CLI parsing and entry dispatch.
 - `agent/gui/loop.py`: main GUI loop orchestration.
+- `agent/gui/chat_flow.py`: open-chat visual state and completion gate helpers.
 - `agent/gui/message_flow.py`: message composer state, stale draft reset, pending text, and send/compose gates.
 - `agent/gui/calendar_flow.py`: calendar visual state, event creation gates, time matching, and calendar action classification.
 - `agent/gui/goals.py`: goal parsing.

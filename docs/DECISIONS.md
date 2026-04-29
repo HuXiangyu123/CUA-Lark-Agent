@@ -49,6 +49,7 @@ Decision:
 
 - Completion gates remain code-owned through `GuiRunState`, `_refresh_done_gate`, `_done_gate_error`, and action/visual evidence.
 - `agent/gui/loop.py` remains the orchestration layer.
+- Chat-opening gate/update logic lives in `agent/gui/chat_flow.py`.
 - Message-specific gate/update logic lives in `agent/gui/message_flow.py`.
 - Calendar-specific gate/update logic lives in `agent/gui/calendar_flow.py`.
 
@@ -283,7 +284,7 @@ Do not assume:
 Decision:
 
 - Keep extracting domain-heavy GUI flow logic out of `agent/gui/loop.py`.
-- Current extracted modules are `agent/gui/message_flow.py` and `agent/gui/calendar_flow.py`.
+- Current extracted modules are `agent/gui/chat_flow.py`, `agent/gui/message_flow.py`, and `agent/gui/calendar_flow.py`.
 - Preserve backwards-compatible underscore wrappers in `loop.py` only where tests or existing imports still use them.
 
 Why:

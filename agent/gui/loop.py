@@ -22,6 +22,11 @@ from agent.gui.calendar_flow import (
     is_calendar_slot_action as _calendar_is_slot_action,
     refresh_calendar_done_gate as _calendar_refresh_done_gate,
 )
+from agent.gui.chat_flow import (
+    apply_open_chat_visual_state as _chat_apply_open_chat_visual_state,
+    looks_like_chat_window_view as _chat_looks_like_window_view,
+    refresh_open_chat_done_gate as _chat_refresh_done_gate,
+)
 from agent.gui.controller import GuiController
 from agent.gui.goals import (
     classify_goal_kind as _classify_goal_kind,
@@ -1206,21 +1211,8 @@ def _refresh_done_gate(run_state: GuiRunState) -> None:
         return
 
     if run_state.goal_kind == "open_chat":
-        if not run_state.target_label:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The target chat title was not extracted from the goal yet."
+        if _chat_refresh_done_gate(run_state):
             return
-        if not run_state.chat_target_open_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = f"The target conversation {run_state.target_label!r} is not visibly open yet."
-            return
-        if not run_state.perception_stable:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
-            return
-        run_state.done_gate_ready = True
-        run_state.done_gate_reason = f"The target conversation {run_state.target_label!r} is visibly open and stable."
-        return
 
     if run_state.goal_kind in {"open_calendar", "create_calendar_event"}:
         if _calendar_refresh_done_gate(run_state):
@@ -1459,18 +1451,12 @@ def _initialize_late_send_message_baseline(run_state: GuiRunState, visual_state:
 
 
 def _apply_open_chat_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
-    normalized_target = _normalize_text(run_state.target_label)
-    normalized_chat_title = _normalize_text(visual_state.chat_title)
-    if normalized_target and normalized_chat_title == normalized_target:
-        if visual_state.composer_visible or _looks_like_chat_window_view(visual_state.primary_view):
-            run_state.chat_target_open_verified = True
-            run_state.current_stage = "verify"
-            _append_evidence(run_state, f"The target conversation {run_state.target_label!r} is visibly open.")
-        else:
-            _append_evidence(
-                run_state,
-                f"The target chat title {run_state.target_label!r} is visible, but the active conversation window is not confirmed yet.",
-            )
+    _chat_apply_open_chat_visual_state(
+        run_state,
+        visual_state,
+        normalize_text=_normalize_text,
+        append_evidence=_append_evidence,
+    )
 
 
 def _apply_calendar_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
@@ -1675,10 +1661,7 @@ def _maybe_apply_feishu_emoji_heuristic(
 
 
 def _looks_like_chat_window_view(primary_view: str) -> bool:
-    view = _normalize_text(primary_view).lower()
-    if not view:
-        return False
-    return ("chat" in view or "conversation" in view) and "list" not in view
+    return _chat_looks_like_window_view(primary_view, normalize_text=_normalize_text)
 
 
 def _looks_like_calendar_view(primary_view: str) -> bool:
