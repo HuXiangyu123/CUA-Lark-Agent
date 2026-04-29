@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from typing import Any, Literal
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
+
+from agent.json_utils import extract_json_object
 
 
 class ActionRouteActionModel(BaseModel):
@@ -201,17 +202,7 @@ def _json_prompt(prompt: str, model_type: type[BaseModel]) -> str:
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
-        stripped = re.sub(r"\s*```$", "", stripped)
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-        if not match:
-            raise
-        payload = json.loads(match.group(0))
-    if not isinstance(payload, dict):
+    payload = extract_json_object(text)
+    if payload is None:
         raise ValueError("model response must be a JSON object")
     return payload

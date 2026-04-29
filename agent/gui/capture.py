@@ -72,9 +72,7 @@ class ScreenCapture:
         if sys.platform == "win32":
             image, virtual_origin, virtual_size = _grab_windows_desktop()
             if region is not None:
-                x, y, width, height = region
-                origin_x, origin_y = virtual_origin
-                image = image.crop((x - origin_x, y - origin_y, x - origin_x + width, y - origin_y + height))
+                image = image.crop(_region_to_image_box(region, virtual_origin, virtual_size, image.size))
             image.save(path)
             pixel_width, pixel_height = _read_image_size(path)
             if region is not None:
@@ -211,6 +209,43 @@ def _windows_virtual_screen_bounds() -> tuple[int, int, int, int]:
         int(user32.GetSystemMetrics(78)),  # SM_CXVIRTUALSCREEN
         int(user32.GetSystemMetrics(79)),  # SM_CYVIRTUALSCREEN
     )
+
+
+def _region_to_image_box(
+    region: tuple[int, int, int, int],
+    virtual_origin: tuple[int, int],
+    virtual_size: tuple[int, int],
+    image_size: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """Convert a Windows logical screen region to ImageGrab pixel coordinates.
+
+    On high-DPI Windows displays, window APIs may report logical coordinates
+    while ImageGrab returns physical pixels. Mapping through the virtual screen
+    dimensions keeps single-screen laptops, mixed-DPI monitors, and negative
+    monitor origins on the same path.
+    """
+    x, y, width, height = region
+    origin_x, origin_y = virtual_origin
+    virtual_width, virtual_height = virtual_size
+    image_width, image_height = image_size
+
+    scale_x = image_width / max(virtual_width, 1)
+    scale_y = image_height / max(virtual_height, 1)
+
+    left = int(round((x - origin_x) * scale_x))
+    top = int(round((y - origin_y) * scale_y))
+    right = int(round((x + width - origin_x) * scale_x))
+    bottom = int(round((y + height - origin_y) * scale_y))
+
+    left = _clamp(left, 0, max(image_width - 1, 0))
+    top = _clamp(top, 0, max(image_height - 1, 0))
+    right = _clamp(right, left + 1, image_width)
+    bottom = _clamp(bottom, top + 1, image_height)
+    return left, top, right, bottom
+
+
+def _clamp(value: int, lower: int, upper: int) -> int:
+    return max(lower, min(value, upper))
 
 
 def _maybe_resize_capture(path: Path) -> None:
