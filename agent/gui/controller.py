@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from agent.gui.dpi import ensure_windows_dpi_awareness
 from agent.gui.schema import GuiAction
 
 
@@ -84,6 +85,7 @@ class GuiController:
 
     def _pg(self):
         if self._pyautogui is None:
+            ensure_windows_dpi_awareness()
             try:
                 import pyautogui  # type: ignore
             except ImportError as exc:

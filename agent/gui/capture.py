@@ -8,6 +8,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from agent.gui.dpi import ensure_windows_dpi_awareness
+
 
 @dataclass
 class ScreenshotArtifact:
@@ -177,6 +179,7 @@ def _read_image_size(path: Path) -> tuple[int, int]:
 
 
 def _load_pyautogui():
+    ensure_windows_dpi_awareness()
     try:
         import pyautogui  # type: ignore
     except ImportError as exc:
@@ -185,6 +188,7 @@ def _load_pyautogui():
 
 
 def _grab_windows_desktop():
+    ensure_windows_dpi_awareness()
     try:
         from PIL import ImageGrab  # type: ignore
     except ImportError as exc:
@@ -195,6 +199,7 @@ def _grab_windows_desktop():
 
 
 def _windows_virtual_screen_bounds() -> tuple[int, int, int, int]:
+    ensure_windows_dpi_awareness()
     try:
         import ctypes
     except ImportError:

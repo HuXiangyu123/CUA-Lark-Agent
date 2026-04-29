@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass, replace
 
 from agent.gui.capture import ScreenshotArtifact
+from agent.gui.dpi import ensure_windows_dpi_awareness
 from agent.gui.schema import GuiAction
 
 
@@ -34,6 +35,7 @@ class MacOSWindowManager:
 
     def activate(self, app_name: str) -> None:
         if sys.platform != "darwin":
+            ensure_windows_dpi_awareness()
             window = self._find_window(app_name)
             was_minimized = bool(getattr(window, "isMinimized", False))
             try:
@@ -64,6 +66,7 @@ class MacOSWindowManager:
 
     def frontmost_app(self) -> str:
         if sys.platform != "darwin":
+            ensure_windows_dpi_awareness()
             try:
                 import pygetwindow as gw  # type: ignore
             except ImportError as exc:
@@ -84,6 +87,7 @@ class MacOSWindowManager:
 
     def get_window(self, app_name: str) -> WindowInfo:
         if sys.platform != "darwin":
+            ensure_windows_dpi_awareness()
             window = self._find_window(app_name)
             return WindowInfo(
                 app_name=app_name,
@@ -113,6 +117,7 @@ class MacOSWindowManager:
         return self.get_window(app_name)
 
     def _find_window(self, app_name: str):
+        ensure_windows_dpi_awareness()
         try:
             import pygetwindow as gw  # type: ignore
         except ImportError as exc:
@@ -149,6 +154,7 @@ class MacOSWindowManager:
         raise RuntimeError(f"windows found for {app_name!r}, but none have usable bounds")
 
     def _click_window_titlebar(self, window) -> None:
+        ensure_windows_dpi_awareness()
         try:
             import pyautogui  # type: ignore
         except ImportError:
