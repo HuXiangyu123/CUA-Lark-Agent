@@ -1,6 +1,6 @@
 # CUA-Lark Agent
 
-> Windows deployment note: this repository now includes a Windows-compatible GUI route. If you are deploying or testing on Windows, start with [README_WINDOWS.md](./README_WINDOWS.md). For context handoff between AI coding sessions, use [DEVELOPMENT_HANDOFF.md](./DEVELOPMENT_HANDOFF.md). The original notes below were written for the macOS-first version.
+> Windows deployment note: this repository now includes a Windows-compatible GUI route. If you are deploying or testing on Windows, start with [README_WINDOWS.md](./README_WINDOWS.md). For context handoff between AI coding sessions, use [DEVELOPMENT_HANDOFF.md](./DEVELOPMENT_HANDOFF.md).
 
 Feishu desktop GUI testing agent with two execution paths:
 
@@ -8,7 +8,7 @@ Feishu desktop GUI testing agent with two execution paths:
 - `gui`: use window screenshots, a general VLM, and real mouse/keyboard actions
 - `auto`: route between API and GUI paths from the user instruction
 
-The current implementation does not depend on a dedicated CUA model. The GUI path is built around a general multimodal model plus a macOS GUI executor.
+The current implementation does not depend on a dedicated CUA model. The GUI path is built around a general multimodal model plus a cross-platform desktop GUI executor, with current Windows support for Feishu/Lark workflows.
 
 ## Supported Tasks
 
@@ -33,7 +33,7 @@ Current GUI coverage is centered on Feishu desktop:
 ### High-level modules
 
 - `agent/`: Python agent runtime
-- `agent/gui/`: screenshot capture, window management, LangChain agents, GUI loop, controller, trace
+- `agent/gui/`: screenshot capture, window management, multimodal perception/action routing, GUI loop orchestration, flow gates, controller, trace
 - `desktop/`: Electron shell so prompts can be run from a desktop UI instead of the terminal
 - `lark-cli/`: Feishu CLI integration assets
 - `scripts/`: helper scripts such as macOS permission preflight
@@ -130,7 +130,8 @@ The todo list is driven by planner output plus run-state validation. It is not a
 
 ### Requirements
 
-- macOS
+- Windows 10/11 for the current Feishu/Lark GUI demo path
+- macOS remains a legacy-supported path for the original GUI executor
 - Python `3.12`
 - `uv`
 - Node.js + npm
@@ -229,6 +230,8 @@ OCR_API_KEY=
 ```
 
 ## macOS Permissions
+
+This section applies only when running the legacy macOS GUI path. Windows GUI runs do not need these macOS permissions.
 
 The app that launches the GUI workflow must have both permissions below:
 
@@ -386,7 +389,8 @@ node --check desktop/renderer/renderer.js
 
 ## Current Constraints
 
-- macOS only
+- Windows GUI route is supported for the current Feishu/Lark demo path
+- macOS support remains from the original implementation, but the current active testing focus is Windows
 - tuned for Feishu desktop
 - GUI completion still depends on visual confirmation and run-state evidence, not server-side truth
 - OCR is not wired into the runtime yet
