@@ -16,6 +16,7 @@ from agent.gui.loop import (
     _is_submit_action,
     _submit_gate_error,
     _looks_like_emoji_goal,
+    _maybe_apply_message_compose_heuristic,
     GuiMessageVisualState,
     GuiRunner,
     _maybe_apply_feishu_emoji_heuristic,
@@ -1174,6 +1175,75 @@ class GuiLoopTest(unittest.TestCase):
         _apply_visual_state(run_state, stale_state)
         self.assertTrue(run_state.composer_reset_satisfied)
         self.assertTrue(run_state.target_message_visually_verified)
+
+    def test_compose_heuristic_clears_nonempty_composer_before_typing(self):
+        observation = ScreenshotArtifact(
+            path=_mock_image_path(),
+            width=2322,
+            height=1272,
+            origin_x=0,
+            origin_y=38,
+            screen_width=1161,
+            screen_height=636,
+            scale_x=2.0,
+            scale_y=2.0,
+        )
+        run_state = _build_initial_run_state('send message "hello-world" in current chat', observation)
+        stale_state = GuiMessageVisualState(
+            composer_text="draft already here",
+            composer_visible=True,
+            composer_exact_match=False,
+            composer_empty=False,
+            evidence="Composer already contains a stale draft.",
+        )
+        _apply_visual_state(run_state, stale_state)
+
+        focus = _maybe_apply_message_compose_heuristic(observation, [], run_state)
+        self.assertIsNotNone(focus)
+        self.assertEqual(focus.action.type, "click")
+        self.assertEqual(focus.action.target, "message composer focus")
+
+        select_all = _maybe_apply_message_compose_heuristic(
+            observation,
+            [{"action": {"target": "message composer focus"}}],
+            run_state,
+        )
+        self.assertIsNotNone(select_all)
+        self.assertEqual(select_all.action.type, "hotkey")
+        self.assertEqual(select_all.action.target, "message composer select all")
+
+        clear = _maybe_apply_message_compose_heuristic(
+            observation,
+            [
+                {"action": {"target": "message composer focus"}},
+                {"action": {"target": "message composer select all"}},
+            ],
+            run_state,
+        )
+        self.assertIsNotNone(clear)
+        self.assertEqual(clear.action.type, "hotkey")
+        self.assertEqual(clear.action.target, "message composer delete selection")
+
+        empty_state = GuiMessageVisualState(
+            composer_text="",
+            composer_visible=True,
+            composer_exact_match=False,
+            composer_empty=True,
+            evidence="Composer is empty after clearing.",
+        )
+        _apply_visual_state(run_state, empty_state)
+        type_pending = _maybe_apply_message_compose_heuristic(
+            observation,
+            [
+                {"action": {"target": "message composer focus"}},
+                {"action": {"target": "message composer select all"}},
+                {"action": {"target": "message composer delete selection"}},
+            ],
+            run_state,
+        )
+        self.assertIsNotNone(type_pending)
+        self.assertEqual(type_pending.action.type, "type")
+        self.assertEqual(type_pending.action.text, "hello-world")
 
     def test_plan_converts_unstable_submit_into_wait(self):
         _mock_image_path().write_bytes(b"test-image")

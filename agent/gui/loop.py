@@ -15,6 +15,13 @@ from typing import Any, Callable
 from openai import OpenAI
 
 from agent.gui.capture import ScreenCapture, ScreenshotArtifact
+from agent.gui.calendar_flow import (
+    apply_calendar_visual_state as _calendar_apply_visual_state,
+    describe_calendar_visual_state as _calendar_describe_visual_state,
+    is_calendar_save_action as _calendar_is_save_action,
+    is_calendar_slot_action as _calendar_is_slot_action,
+    refresh_calendar_done_gate as _calendar_refresh_done_gate,
+)
 from agent.gui.controller import GuiController
 from agent.gui.goals import (
     classify_goal_kind as _classify_goal_kind,
@@ -31,6 +38,16 @@ from agent.gui.goals import (
     looks_like_open_chat_goal as _looks_like_open_chat_goal,
 )
 from agent.gui.langchain_agents import LangChainGuiAgentSuite
+from agent.gui.message_flow import (
+    apply_message_execution_state as _message_apply_execution_state,
+    apply_message_visual_state as _message_apply_visual_state,
+    describe_message_visual_state as _message_describe_visual_state,
+    initialize_late_send_message_baseline as _message_initialize_late_send_message_baseline,
+    initialize_send_message_baseline as _message_initialize_send_message_baseline,
+    maybe_apply_message_compose_heuristic as _message_maybe_apply_compose_heuristic,
+    refresh_message_done_gate as _message_refresh_done_gate,
+    submit_gate_error as _message_submit_gate_error,
+)
 from agent.gui.prompts import (
     GUI_ACTION_SYSTEM_PROMPT,
     GUI_PERCEPTION_SYSTEM_PROMPT,
@@ -82,6 +99,7 @@ class GuiRunResult:
 class GuiRunState:
     goal_kind: str
     target_message: str
+    pending_message_text: str
     target_label: str
     calendar_event_title_target: str
     calendar_target_time_hint: str
@@ -137,6 +155,7 @@ class GuiRunState:
         return {
             "goal_kind": self.goal_kind,
             "target_message": self.target_message,
+            "pending_message_text": self.pending_message_text,
             "target_label": self.target_label,
             "calendar_event_title_target": self.calendar_event_title_target,
             "calendar_target_time_hint": self.calendar_target_time_hint,
@@ -596,6 +615,9 @@ class GuiRunner:
             heuristic_decision = _maybe_apply_feishu_emoji_heuristic(goal, observation, history, step_index, app_name)
             if heuristic_decision is not None:
                 return heuristic_decision, json.dumps(heuristic_decision.to_dict(), ensure_ascii=False, indent=2)
+        heuristic_decision = _maybe_apply_message_compose_heuristic(observation, history, run_state)
+        if heuristic_decision is not None:
+            return heuristic_decision, json.dumps(heuristic_decision.to_dict(), ensure_ascii=False, indent=2)
         if run_state.goal_kind == "clear_composer":
             heuristic_decision = _maybe_apply_clear_composer_heuristic(observation, history, run_state)
             if heuristic_decision is not None:
@@ -814,6 +836,19 @@ def _normalize_decision_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _maybe_apply_message_compose_heuristic(
+    observation: ScreenshotArtifact,
+    history: list[dict[str, Any]],
+    run_state: GuiRunState,
+) -> GuiDecision | None:
+    return _message_maybe_apply_compose_heuristic(
+        observation,
+        history,
+        run_state,
+        decision_from_dict=GuiDecision.from_dict,
+    )
+
+
 def _maybe_apply_clear_composer_heuristic(
     observation: ScreenshotArtifact,
     history: list[dict[str, Any]],
@@ -938,6 +973,7 @@ def _build_initial_run_state(goal: str, observation: ScreenshotArtifact) -> GuiR
     run_state = GuiRunState(
         goal_kind=goal_kind,
         target_message=target_message,
+        pending_message_text=target_message,
         target_label=_extract_target_label(goal, goal_kind),
         calendar_event_title_target=_extract_calendar_event_title(goal, goal_kind),
         calendar_target_time_hint=_extract_calendar_time_hint(goal, goal_kind),
@@ -1004,63 +1040,15 @@ def _apply_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState
         _refresh_done_gate(run_state)
         return
 
-    if not run_state.baseline_initialized:
-        if run_state.compose_actions <= 0 and run_state.submit_actions <= 0:
-            _initialize_send_message_baseline(run_state, visual_state)
-        else:
-            _initialize_late_send_message_baseline(run_state, visual_state)
-
-    if run_state.composer_reset_required and not run_state.composer_reset_satisfied:
-        if visual_state.composer_empty:
-            run_state.composer_reset_satisfied = True
-            _append_evidence(run_state, "The stale baseline draft was cleared from the composer during this run.")
-        elif run_state.composer_reset_started and run_state.compose_actions > 0 and visual_state.composer_exact_match:
-            run_state.composer_reset_satisfied = True
-            _append_evidence(run_state, "The stale baseline draft was replaced with a freshly typed exact target message during this run.")
-
-    if visual_state.composer_exact_match:
-        if run_state.composer_reset_required and not run_state.composer_reset_satisfied:
-            _append_evidence(
-                run_state,
-                "The composer currently shows the target text, but it still counts as a stale baseline draft until this run clears or replaces it.",
-            )
-        else:
-            run_state.target_message_visually_verified = True
-            _append_evidence(run_state, "Current screenshot shows the exact target text in the composer.")
-            if run_state.compose_actions <= 0:
-                _append_evidence(run_state, "The exact target text was already present in the composer before any new type action in this run.")
-    elif visual_state.composer_text:
-        if _normalize_text(visual_state.composer_text) != _normalize_text(run_state.target_message):
-            _append_evidence(
-                run_state,
-                f"Current screenshot shows composer text mismatch: {visual_state.composer_text!r}",
-            )
-    elif visual_state.composer_empty:
-        _append_evidence(run_state, "Current screenshot shows an empty composer.")
-
-    submitted_target_this_run = (
-        run_state.submit_actions > 0
-        and (run_state.target_message_typed or run_state.target_message_visually_verified)
+    _message_apply_visual_state(
+        run_state,
+        visual_state,
+        normalize_text=_normalize_text,
+        append_evidence=_append_evidence,
+        refresh_done_gate=_refresh_done_gate,
+        initialize_send_message_baseline_cb=_initialize_send_message_baseline,
+        initialize_late_send_message_baseline_cb=_initialize_late_send_message_baseline,
     )
-    visible_new_or_typed_target = (
-        visual_state.sent_message_exact_match
-        and (
-            run_state.target_message_typed
-            or _normalize_text(visual_state.latest_visible_message) != _normalize_text(run_state.baseline_latest_visible_message)
-        )
-    )
-    if submitted_target_this_run and visible_new_or_typed_target:
-        run_state.send_visually_confirmed = True
-        run_state.current_stage = "verify"
-        _append_evidence(run_state, "Current screenshot shows the exact target message after this run submitted it.")
-    elif submitted_target_this_run and visual_state.composer_empty:
-        run_state.send_visually_confirmed = True
-        run_state.current_stage = "verify"
-        _append_evidence(run_state, "Composer cleared after this run typed and submitted the exact target text.")
-    elif visual_state.sent_message_exact_match and run_state.submit_actions <= 0:
-        _append_evidence(run_state, "The target message is visible in baseline chat history, but this run has not submitted anything yet.")
-
-    _refresh_done_gate(run_state)
 
 
 def _apply_execution_state(run_state: GuiRunState, decision: GuiDecision, execution: Any) -> None:
@@ -1070,26 +1058,18 @@ def _apply_execution_state(run_state: GuiRunState, decision: GuiDecision, execut
         return
 
     if run_state.goal_kind in {"send_message", "compose_message"}:
-        if _is_select_all_action(action) and run_state.composer_reset_required and not run_state.composer_reset_satisfied:
-            run_state.composer_reset_started = True
-            run_state.current_stage = "compose"
-            _append_evidence(run_state, "Selected the existing baseline draft so it can be cleared or replaced.")
-        elif action.type == "type" and action.text:
-            run_state.compose_actions += 1
-            run_state.current_stage = "compose"
-            run_state.typed_texts.append(action.text)
-            if run_state.target_message and _normalize_text(action.text) == _normalize_text(run_state.target_message):
-                run_state.target_message_typed = True
-                _append_evidence(run_state, f"Typed target message during this run: {action.text!r}")
-            else:
-                _append_evidence(run_state, f"Typed message during this run: {action.text!r}")
-        elif _is_submit_action(action):
-            run_state.submit_actions += 1
-            run_state.current_stage = "submit"
-            _append_evidence(run_state, f"Executed submit action during this run: {action.type}")
-        else:
-            run_state.current_stage = decision.stage or "navigate"
-    elif run_state.goal_kind == "clear_composer":
+        _message_apply_execution_state(
+            run_state,
+            decision,
+            execution,
+            is_select_all_action=_is_select_all_action,
+            is_submit_action=_is_submit_action,
+            normalize_text=_normalize_text,
+            append_evidence=_append_evidence,
+            refresh_done_gate=_refresh_done_gate,
+        )
+        return
+    if run_state.goal_kind == "clear_composer":
         if action.type != "wait":
             run_state.clear_actions += 1
         if _is_submit_action(action):
@@ -1182,40 +1162,10 @@ def _blocked_gate_error(decision: GuiDecision, run_state: GuiRunState) -> str | 
 
 
 def _submit_gate_error(decision: GuiDecision, run_state: GuiRunState) -> str | None:
-    action = decision.action
-    if decision.status != "continue" or action is None:
-        return None
-    if not _is_submit_action(action):
-        return None
-    if run_state.goal_kind == "clear_composer":
-        return "The goal is to clear an unsent draft; do not click send or submit."
-    if run_state.goal_kind == "compose_message":
-        return "The goal explicitly says to leave the message as an unsent draft; do not click send or submit."
-    if run_state.goal_kind != "send_message" or not run_state.target_message:
-        return None
-    if run_state.composer_reset_required and not run_state.composer_reset_satisfied:
-        baseline_text = run_state.baseline_composer_text or "stale draft text"
-        return (
-            "The baseline composer already contained stale text "
-            f"({baseline_text!r}). Clear or replace that draft in this run before submitting."
-        )
-    visual_state = run_state.last_visual_state or {}
-    composer_text = str(visual_state.get("composer_text", "")).strip()
-    composer_exact_match = bool(visual_state.get("composer_exact_match", False))
-    if composer_exact_match:
-        if not run_state.perception_stable:
-            return "The composer exact-match observation is not stable yet. Re-observe once before submitting."
-        return None
-    if composer_text:
-        return (
-            "The composer currently shows mismatched or partial text "
-            f"({composer_text!r}) instead of the exact target message {run_state.target_message!r}."
-        )
-    if run_state.compose_actions <= 0:
-        return "This run has not composed or visually verified the target message yet. Do not submit an empty or unrelated composer."
-    return (
-        "The composer does not visibly contain the exact target message yet. "
-        "It is currently empty, placeholder-only, or unreadable."
+    return _message_submit_gate_error(
+        decision,
+        run_state,
+        is_submit_action=_is_submit_action,
     )
 
 
@@ -1235,58 +1185,12 @@ def _refresh_done_gate(run_state: GuiRunState) -> None:
         return
 
     if run_state.goal_kind == "compose_message":
-        if run_state.submit_actions > 0:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This draft-only run already executed a send/submit action, which violates the goal."
+        if _message_refresh_done_gate(run_state):
             return
-        if run_state.compose_actions <= 0 or not run_state.target_message_typed:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This run has not typed the exact target draft text yet."
-            return
-        if run_state.target_message and not run_state.target_message_visually_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This run has not visually verified the exact target draft text in the composer."
-            return
-        if not run_state.perception_stable:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
-            return
-        run_state.done_gate_ready = True
-        run_state.done_gate_reason = "This run typed and visually verified the exact draft text without sending it."
-        return
 
     if run_state.goal_kind == "send_message":
-        if run_state.submit_actions <= 0:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This run has not executed any send/submit action yet."
+        if _message_refresh_done_gate(run_state):
             return
-        if (
-            run_state.target_message
-            and not run_state.target_message_visually_verified
-            and not (run_state.submit_actions > 0 and run_state.target_message_typed and run_state.send_visually_confirmed)
-        ):
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = (
-                "This run has not visually verified the exact target text in the composer before submit."
-            )
-            return
-        if run_state.target_message and not run_state.send_visually_confirmed:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = (
-                "This run has not visually confirmed that the exact target message was sent successfully."
-            )
-            return
-        if not run_state.perception_stable:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
-            return
-        if not run_state.target_message and run_state.compose_actions <= 0:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This run submitted something, but there is no recorded compose step before it."
-            return
-        run_state.done_gate_ready = True
-        run_state.done_gate_reason = "This run recorded exact text verification, submit, and visual send confirmation."
-        return
 
     if run_state.goal_kind == "send_emoji":
         if run_state.submit_actions <= 0:
@@ -1318,59 +1222,9 @@ def _refresh_done_gate(run_state: GuiRunState) -> None:
         run_state.done_gate_reason = f"The target conversation {run_state.target_label!r} is visibly open and stable."
         return
 
-    if run_state.goal_kind == "open_calendar":
-        if not run_state.calendar_visible_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The Calendar module is not visibly open yet."
+    if run_state.goal_kind in {"open_calendar", "create_calendar_event"}:
+        if _calendar_refresh_done_gate(run_state):
             return
-        if not run_state.perception_stable:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
-            return
-        run_state.done_gate_ready = True
-        run_state.done_gate_reason = "The Calendar module is visibly open and stable."
-        return
-
-    if run_state.goal_kind == "create_calendar_event":
-        if not run_state.calendar_visible_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The Calendar module is not visibly open yet."
-            return
-        if not run_state.calendar_today_highlighted_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "Today's blue-highlighted calendar date has not been visually identified yet."
-            return
-        if run_state.calendar_slot_action_count <= 0:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This run has not clicked a calendar time slot yet."
-            return
-        if run_state.calendar_target_time_hint and not run_state.calendar_time_range_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = f"The selected calendar time range does not yet visibly match the requested hint {run_state.calendar_target_time_hint!r}."
-            return
-        if not run_state.calendar_event_editor_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The new calendar event editor is not visibly open yet."
-            return
-        if run_state.calendar_event_title_target and not run_state.calendar_event_title_typed_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = f"The calendar event title {run_state.calendar_event_title_target!r} is not visibly typed in the editor yet."
-            return
-        if run_state.calendar_save_actions <= 0:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "This run has not clicked Save in the calendar event editor yet."
-            return
-        if not run_state.calendar_event_saved_verified:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The saved calendar event is not visibly present in the calendar grid yet."
-            return
-        if not run_state.perception_stable:
-            run_state.done_gate_ready = False
-            run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
-            return
-        run_state.done_gate_ready = True
-        run_state.done_gate_reason = "Calendar event creation was completed, saved, and the new event is visibly present in the calendar grid."
-        return
 
     run_state.done_gate_ready = True
     run_state.done_gate_reason = "Generic goal does not require a send-proof gate."
@@ -1384,6 +1238,7 @@ def _summarize_run_state(run_state: GuiRunState) -> str:
         [
             f"- Goal kind: {run_state.goal_kind}",
             f"- Target message: {run_state.target_message or '(none)'}",
+            f"- Pending message text: {run_state.pending_message_text or '(none)'}",
             f"- Target label: {run_state.target_label or '(none)'}",
             f"- Calendar event title target: {run_state.calendar_event_title_target or '(none)'}",
             f"- Calendar target time hint: {run_state.calendar_target_time_hint or '(none)'}",
@@ -1444,7 +1299,7 @@ def _sanitize_perception_state(run_state: GuiRunState, visual_state: GuiPercepti
     composer_text = _normalize_text(visual_state.composer_text)
     placeholder_text = _normalize_text(visual_state.composer_placeholder)
     latest_visible_message = _normalize_text(visual_state.latest_visible_message)
-    target_message = _normalize_text(run_state.target_message)
+    target_message = _normalize_text(run_state.pending_message_text or run_state.target_message)
     visual_state.calendar_today_label = _normalize_text(visual_state.calendar_today_label)
     visual_state.calendar_event_editor_title_text = _normalize_text(visual_state.calendar_event_editor_title_text)
     visual_state.calendar_event_time_range = _normalize_text(visual_state.calendar_event_time_range)
@@ -1513,24 +1368,12 @@ def _describe_visual_state(run_state: GuiRunState) -> str:
     if bool(visual_state.get("calendar_event_editor_visible", False)):
         title = str(visual_state.get("calendar_event_editor_title_text", "")).strip()
         return f"calendar event editor visible{f' with title {title!r}' if title else ''}"
-    if bool(visual_state.get("calendar_visible", False)):
-        if bool(visual_state.get("calendar_today_highlighted", False)):
-            label = str(visual_state.get("calendar_today_label", "")).strip()
-            return f"calendar visible with today highlighted{f' ({label})' if label else ''}"
-        return "calendar visible"
-    primary_view = str(visual_state.get("primary_view", "")).strip().lower()
-    if primary_view and ("chat" in primary_view or "conversation" in primary_view):
-        title = str(visual_state.get("chat_title", "")).strip()
-        return f"chat window visible{f' for {title!r}' if title else ''}"
-    composer_text = str(visual_state.get("composer_text", "")).strip()
-    if composer_text and run_state.target_message and _normalize_text(composer_text) != _normalize_text(run_state.target_message):
-        return "composer text mismatches target"
-    if bool(visual_state.get("sent_message_exact_match", False)):
-        return "exact target message visible in chat"
-    if bool(visual_state.get("composer_exact_match", False)):
-        return "composer text exactly matches target"
-    if bool(visual_state.get("composer_empty", False)):
-        return "composer empty"
+    calendar_state = _calendar_describe_visual_state(run_state)
+    if calendar_state:
+        return calendar_state
+    message_state = _message_describe_visual_state(run_state, normalize_text=_normalize_text)
+    if message_state:
+        return message_state
     return visual_state.get("evidence", "visual state captured")
 
 
@@ -1604,38 +1447,15 @@ def _normalize_text(text: str) -> str:
 
 
 def _initialize_send_message_baseline(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
-    run_state.baseline_initialized = True
-    run_state.baseline_latest_visible_message = visual_state.latest_visible_message
-    run_state.baseline_sent_message_exact_match = visual_state.sent_message_exact_match
-    run_state.baseline_composer_text = visual_state.composer_text
-    run_state.baseline_composer_nonempty = bool(visual_state.composer_text)
-    run_state.baseline_composer_exact_match = visual_state.composer_exact_match
-    run_state.composer_reset_required = run_state.baseline_composer_nonempty
-
-    if not run_state.baseline_composer_nonempty:
-        return
-
-    if run_state.baseline_composer_exact_match:
-        _append_evidence(
-            run_state,
-            "Baseline composer already contains the exact target text. Treating it as a stale draft that must be cleared or replaced in this run.",
-        )
-        return
-
-    _append_evidence(
+    _message_initialize_send_message_baseline(
         run_state,
-        f"Baseline composer already contains stale draft text: {run_state.baseline_composer_text!r}. It must be cleared or replaced before submit.",
+        visual_state,
+        append_evidence=_append_evidence,
     )
 
 
 def _initialize_late_send_message_baseline(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
-    run_state.baseline_initialized = True
-    run_state.baseline_latest_visible_message = visual_state.latest_visible_message
-    run_state.baseline_sent_message_exact_match = visual_state.sent_message_exact_match
-    run_state.baseline_composer_text = ""
-    run_state.baseline_composer_nonempty = False
-    run_state.baseline_composer_exact_match = False
-    run_state.composer_reset_required = False
+    _message_initialize_late_send_message_baseline(run_state, visual_state)
 
 
 def _apply_open_chat_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
@@ -1654,87 +1474,13 @@ def _apply_open_chat_visual_state(run_state: GuiRunState, visual_state: GuiPerce
 
 
 def _apply_calendar_visual_state(run_state: GuiRunState, visual_state: GuiPerceptionState) -> None:
-    if (
-        visual_state.calendar_visible
-        or _looks_like_calendar_view(visual_state.primary_view)
-        or _normalize_text(visual_state.selected_sidebar_item).lower() == "calendar"
-    ):
-        run_state.calendar_visible_verified = True
-        _append_evidence(run_state, "The Calendar module is visibly open in the current screenshot.")
-
-    if visual_state.calendar_today_highlighted:
-        run_state.calendar_today_highlighted_verified = True
-        if visual_state.calendar_today_label:
-            run_state.calendar_today_label = visual_state.calendar_today_label
-        _append_evidence(
-            run_state,
-            f"Today's blue-highlighted calendar date is visible{f': {run_state.calendar_today_label}' if run_state.calendar_today_label else ''}.",
-        )
-
-    if visual_state.calendar_event_editor_visible:
-        run_state.calendar_event_editor_verified = True
-        run_state.current_stage = "verify"
-        run_state.calendar_event_title_current = visual_state.calendar_event_editor_title_text
-        if (
-            run_state.calendar_event_title_target
-            and visual_state.calendar_event_editor_title_text
-            and _normalize_text(visual_state.calendar_event_editor_title_text) == _normalize_text(run_state.calendar_event_title_target)
-        ):
-            run_state.calendar_event_title_typed_verified = True
-            _append_evidence(
-                run_state,
-                f"The calendar event editor visibly contains the requested title {run_state.calendar_event_title_target!r}.",
-            )
-        if (
-            run_state.calendar_target_time_hint
-            and visual_state.calendar_event_time_range
-            and _calendar_time_range_matches_hint(visual_state.calendar_event_time_range, run_state.calendar_target_time_hint)
-        ):
-            run_state.calendar_time_range_verified = True
-            _append_evidence(
-                run_state,
-                f"The calendar event editor time range {visual_state.calendar_event_time_range!r} matches the requested time hint {run_state.calendar_target_time_hint!r}.",
-            )
-        if visual_state.calendar_event_time_range:
-            _append_evidence(
-                run_state,
-                f"A new calendar event editor is open with visible time range {visual_state.calendar_event_time_range!r}.",
-            )
-        else:
-            _append_evidence(run_state, "A new calendar event editor is visibly open.")
-
-    if (
-        run_state.calendar_slot_action_count <= 0
-        and run_state.calendar_save_actions <= 0
-        and visual_state.calendar_saved_event_visible
-        and (
-            not run_state.calendar_event_title_target
-            or _normalize_text(visual_state.calendar_saved_event_title) == _normalize_text(run_state.calendar_event_title_target)
-        )
-    ):
-        run_state.calendar_preexisting_matching_event_visible = True
-        _append_evidence(
-            run_state,
-            "A matching calendar event tile is already visible before this run performs any slot-click or Save action. Treating it as baseline only.",
-        )
-
-    if (
-        run_state.calendar_save_actions > 0
-        and visual_state.calendar_saved_event_visible
-        and (
-            not run_state.calendar_event_title_target
-            or _normalize_text(visual_state.calendar_saved_event_title) == _normalize_text(run_state.calendar_event_title_target)
-        )
-    ):
-        run_state.calendar_event_saved_verified = True
-        run_state.current_stage = "verify"
-        if visual_state.calendar_saved_event_title:
-            _append_evidence(
-                run_state,
-                f"The saved calendar event {visual_state.calendar_saved_event_title!r} is visibly present in the calendar grid.",
-            )
-        else:
-            _append_evidence(run_state, "A saved calendar event is visibly present in the calendar grid.")
+    _calendar_apply_visual_state(
+        run_state,
+        visual_state,
+        normalize_text=_normalize_text,
+        append_evidence=_append_evidence,
+        looks_like_calendar_view=_looks_like_calendar_view,
+    )
 
 
 def _apply_workflow_plan(run_state: GuiRunState, workflow_steps: list[str], active_step_index: int | None) -> None:
@@ -1941,77 +1687,11 @@ def _looks_like_calendar_view(primary_view: str) -> bool:
 
 
 def _is_calendar_slot_action(action: Any) -> bool:
-    if getattr(action, "type", "") != "click":
-        return False
-    target = _normalize_text(str(getattr(action, "target", ""))).lower()
-    keywords = (
-        "time slot",
-        "timeslot",
-        "slot",
-        "today column",
-        "week grid",
-        "calendar grid",
-        "empty time",
-        "时间节点",
-        "时间槽",
-        "日历网格",
-        "日期列",
-    )
-    return any(keyword in target for keyword in keywords)
+    return _calendar_is_slot_action(action, normalize_text=_normalize_text)
 
 
 def _is_calendar_save_action(action: Any) -> bool:
-    action_type = getattr(action, "type", "")
-    target = _normalize_text(str(getattr(action, "target", ""))).lower()
-    if action_type == "click" and "save" in target:
-        return True
-    if action_type == "hotkey":
-        keys = [str(key).lower() for key in (getattr(action, "keys", None) or [])]
-        return keys in (["command", "s"], ["ctrl", "s"])
-    return False
-
-
-def _calendar_time_range_matches_hint(visible_range: str, hint: str) -> bool:
-    if not visible_range or not hint:
-        return False
-    normalized_range = _normalize_text(visible_range).lower()
-    normalized_hint = _normalize_text(hint).lower()
-    if normalized_hint in normalized_range:
-        return True
-
-    hint_minutes = _extract_time_candidates_in_minutes(hint)
-    range_minutes = _extract_time_candidates_in_minutes(visible_range)
-    if not hint_minutes or not range_minutes:
-        return False
-
-    first_hint = hint_minutes[0]
-    return any(abs(candidate - first_hint) <= 5 for candidate in range_minutes)
-
-
-def _extract_time_candidates_in_minutes(text: str) -> list[int]:
-    candidates: list[int] = []
-    lower = text.lower()
-
-    for match in re.finditer(r"\b(\d{1,2}):(\d{2})\s*(am|pm)?\b", lower):
-        hour = int(match.group(1))
-        minute = int(match.group(2))
-        meridiem = match.group(3)
-        if meridiem == "pm" and hour != 12:
-            hour += 12
-        elif meridiem == "am" and hour == 12:
-            hour = 0
-        candidates.append(hour * 60 + minute)
-
-    for match in re.finditer(r"(\d{1,2})点(?:(\d{1,2})分?)?", text):
-        hour = int(match.group(1))
-        minute = int(match.group(2) or "0")
-        candidates.append(hour * 60 + minute)
-
-    unique: list[int] = []
-    for candidate in candidates:
-        if candidate not in unique:
-            unique.append(candidate)
-    return unique
+    return _calendar_is_save_action(action, normalize_text=_normalize_text)
 
 
 def _image_to_data_url(path: Path) -> str:
