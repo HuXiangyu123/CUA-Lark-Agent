@@ -78,6 +78,26 @@ class GuiLoopTest(unittest.TestCase):
             "CUA Windows 测试成功",
         )
 
+    def test_extract_target_message_after_send_label_not_group_quote(self):
+        self.assertEqual(
+            _extract_target_message("搜索群聊“bot功能测试”并发送消息：CUA计时测试 20260430-003522"),
+            "CUA计时测试 20260430-003522",
+        )
+        self.assertEqual(
+            _extract_target_message('open group chat "bot功能测试" and send message: timed test 001'),
+            "timed test 001",
+        )
+
+    def test_send_message_goal_extracts_chat_label_and_message_separately(self):
+        observation = ScreenshotArtifact(path=_mock_image_path(), width=100, height=100)
+        run_state = _build_initial_run_state(
+            "搜索群聊“bot功能测试”并发送消息：CUA计时测试 20260430-003522",
+            observation,
+        )
+        self.assertEqual(run_state.goal_kind, "send_message")
+        self.assertEqual(run_state.target_label, "bot功能测试")
+        self.assertEqual(run_state.target_message, "CUA计时测试 20260430-003522")
+
     def test_compose_without_send_goal_has_draft_gate(self):
         observation = ScreenshotArtifact(path=_mock_image_path(), width=100, height=100)
         run_state = _build_initial_run_state("在当前飞书聊天输入框输入：CUA Windows 测试成功，但不要发送", observation)
@@ -951,6 +971,102 @@ class GuiLoopTest(unittest.TestCase):
         self.assertTrue(run_state.done_gate_ready)
         self.assertIsNone(_done_gate_error(done, run_state))
 
+    def test_done_gate_accepts_green_status_icon_after_submit(self):
+        observation = ScreenshotArtifact(
+            path=_mock_image_path(),
+            width=2322,
+            height=1272,
+            origin_x=0,
+            origin_y=38,
+            screen_width=1161,
+            screen_height=636,
+            scale_x=2.0,
+            scale_y=2.0,
+        )
+        run_state = _build_initial_run_state('send message "green-status-test" in current chat', observation)
+        compose = GuiDecision.from_dict(
+            {
+                "status": "continue",
+                "stage": "compose",
+                "current_state": "composer focused",
+                "progress_assessment": "typed",
+                "previous_step_ok": True,
+                "success_criteria": "target text typed",
+                "completion_evidence": "",
+                "action": {"type": "type", "target": "composer", "text": "green-status-test"},
+            }
+        )
+        submit = GuiDecision.from_dict(
+            {
+                "status": "continue",
+                "stage": "submit",
+                "current_state": "composer contains target",
+                "progress_assessment": "clicked send",
+                "previous_step_ok": True,
+                "success_criteria": "message sent",
+                "completion_evidence": "",
+                "action": {"type": "hotkey", "target": "submit composer", "keys": ["enter"]},
+            }
+        )
+        _apply_execution_state(run_state, compose, type("Result", (), {"ok": True})())
+        _apply_visual_state(
+            run_state,
+            GuiMessageVisualState(
+                composer_text="green-status-test",
+                composer_visible=True,
+                composer_exact_match=True,
+                composer_empty=False,
+                sent_message_visible=False,
+                sent_message_exact_match=False,
+                evidence="Composer exactly matches target.",
+            ),
+        )
+        _apply_visual_state(
+            run_state,
+            GuiMessageVisualState(
+                composer_text="green-status-test",
+                composer_visible=True,
+                composer_exact_match=True,
+                composer_empty=False,
+                sent_message_visible=False,
+                sent_message_exact_match=False,
+                evidence="Composer exactly matches target.",
+            ),
+        )
+        _apply_execution_state(run_state, submit, type("Result", (), {"ok": True})())
+        _apply_visual_state(
+            run_state,
+            GuiMessageVisualState(
+                composer_text="",
+                composer_visible=True,
+                composer_empty=True,
+                sent_message_visible=True,
+                sent_message_exact_match=True,
+                latest_visible_message="green-status-test",
+                sent_message_status_visible=True,
+                sent_message_status_kind="seen",
+                sent_message_status_evidence="A partially filled green circle is immediately right of the outgoing target bubble.",
+                evidence="The exact outgoing message has a green circular read-status icon to its right.",
+            ),
+        )
+
+        done = GuiDecision.from_dict(
+            {
+                "status": "done",
+                "stage": "complete",
+                "current_state": "message sent",
+                "progress_assessment": "green status confirms send",
+                "previous_step_ok": True,
+                "success_criteria": "message was submitted",
+                "completion_evidence": "Green status circle is visible to the right of the outgoing target bubble.",
+                "done_reason": "Message sent.",
+            }
+        )
+        self.assertTrue(run_state.send_visually_confirmed)
+        self.assertTrue(run_state.send_status_visually_confirmed)
+        self.assertTrue(run_state.done_gate_ready)
+        self.assertIsNone(_done_gate_error(done, run_state))
+
     def test_submit_gate_requires_stable_exact_match_observation(self):
         observation = ScreenshotArtifact(
             path=_mock_image_path(),
@@ -1316,6 +1432,7 @@ class GuiLoopTest(unittest.TestCase):
         )
         self.assertEqual(decision.action.type, "wait")
         self.assertEqual(decision.stage, "verify")
+        self.assertEqual(decision.action.duration_ms, 100)
 
     def test_plan_converts_unstable_done_into_wait(self):
         _mock_image_path().write_bytes(b"test-image")
@@ -1436,7 +1553,7 @@ class GuiLoopTest(unittest.TestCase):
             run_state,
         )
         self.assertEqual(decision.action.type, "wait")
-        self.assertEqual(decision.action.duration_ms, 800)
+        self.assertEqual(decision.action.duration_ms, 100)
 
     def test_plan_retries_when_blocked_on_preexisting_calendar_event(self):
         _mock_image_path().write_bytes(b"test-image")

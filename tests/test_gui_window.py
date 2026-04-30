@@ -7,6 +7,8 @@ from agent.gui.window import (
     _parse_window_list,
     _select_main_window,
     _titlebar_click_point,
+    _window_matches_app_title,
+    _window_title_candidates,
     translate_action_from_image_to_screen,
     translate_action_to_screen,
 )
@@ -55,6 +57,12 @@ class GuiWindowTest(unittest.TestCase):
     def test_titlebar_click_point_uses_safe_top_center(self):
         self.assertEqual(_titlebar_click_point(100, 200, 1000, 700), (600, 223))
         self.assertEqual(_titlebar_click_point(10, 20, 120, 28), (70, 32))
+
+    def test_feishu_title_candidates_match_chinese_window_title(self):
+        candidates = _window_title_candidates("Feishu")
+        self.assertIn("飞书", candidates)
+        self.assertTrue(_window_matches_app_title("飞书", candidates))
+        self.assertFalse(_window_matches_app_title("PackyAPI - Microsoft Edge", candidates))
 
 
 if __name__ == "__main__":

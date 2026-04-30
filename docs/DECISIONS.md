@@ -295,3 +295,56 @@ Why:
 Do not assume:
 
 - Refactoring should rewrite the loop wholesale. Prefer incremental extraction with tests after each step.
+
+## D16. Send-Message Goals Separate Chat Target From Message Payload
+
+Decision:
+
+- For send-message goals, labeled message payloads such as `发送消息：...`, `发送信息：...`, or `send message: ...` take precedence over quoted chat/contact names.
+- A send-message goal can carry both `target_label` and `pending_message_text`.
+- Quoted text is still valid for simple goals such as `send message "hello-world" in current chat`.
+
+Why:
+
+- The timed task `搜索群聊“bot功能测试”并发送消息：CUA计时测试 ...` previously parsed `bot功能测试` as the message payload because it was the first quoted text.
+- That caused the runner to type the group name and then repeatedly clear/retry because the actual requested payload was missing.
+
+Do not assume:
+
+- First quoted text is always the message. In multi-step goals it is often the target chat/contact.
+
+## D17. Feishu Window Matching Must Handle Chinese Window Titles
+
+Decision:
+
+- `GUI_TARGET_APP=Feishu` must match both English `Feishu`/`Lark` titles and the Chinese desktop title `飞书`.
+- The title matcher must not match unrelated windows such as Edge/PackyAPI.
+
+Why:
+
+- Feishu minimized restore code existed, but a matcher special case skipped the Chinese candidate after checking `Feishu/Lark`.
+- A minimized real Feishu window titled `飞书` was present, while the run captured a browser instead.
+
+Do not assume:
+
+- PowerShell `Get-Content` display is authoritative for Chinese strings. Use Python UTF-8 reads for files and Unicode escapes in ad-hoc shell snippets when needed.
+
+## D18. Send Confirmation Prefers Visual Status Icon, Waits Are Task-Specific
+
+Decision:
+
+- The perception schema includes `sent_message_status_visible`, `sent_message_status_kind`, and `sent_message_status_evidence`.
+- A valid send/read status is a small green circular mark immediately to the right of the newest exact outgoing target message bubble.
+- Empty green outline means sent but not seen; partially filled green circle means seen/read by at least one person. Both count as send-status evidence.
+- Green avatars, online dots, buttons, checkboxes, sidebar badges, or icons not attached to the exact outgoing target message do not count.
+- Synthetic waits use task-specific durations. Message exact-text and send-status checks use `100ms`; slower page/calendar stabilization can keep longer waits.
+
+Why:
+
+- Hard-coded waits made successful input/send flows slower and harder to reason about.
+- Sending should be confirmed by screenshot evidence, not only by sleeping.
+
+Do not assume:
+
+- A wait action means one global sleep duration.
+- A green UI element anywhere on the screen proves send success.

@@ -87,6 +87,7 @@ Summarize the current visible UI state conservatively.
 Do not assume success from history alone.
 For send-message tasks, if text is partial, cropped, unreadable, or missing characters, mark exact_match as false.
 If the composer shows only placeholder text or is empty, composer_exact_match must be false.
+For send-message verification, inspect only the newest outgoing/right-side message bubble that contains the exact target text. A valid Feishu send/read status indicator is a small green circular mark immediately to the right of that outgoing bubble. It may be an empty green outlined circle (sent but not seen) or a partially filled green circle (seen/read by at least one person). Both count as sent_message_status_visible=true. Do not count green avatars, online dots, buttons, checkboxes, sidebar badges, or icons that are not directly attached to the right side of the exact outgoing target message.
 For chat-switch goals, distinguish between the chat list being visible and the actual conversation window being open.
 For calendar goals, identify whether the Calendar module is visible, whether today's date is blue-highlighted, whether a new event editor or draft card is open, what title text is visible in that editor, and whether a saved event tile is already visible in the calendar grid.
 
@@ -107,6 +108,9 @@ Return JSON only with this schema:
   "sent_message_visible": false,
   "sent_message_exact_match": false,
   "latest_visible_message": "best-effort latest visible outgoing or relevant chat message",
+  "sent_message_status_visible": false,
+  "sent_message_status_kind": "sent|seen|unknown",
+  "sent_message_status_evidence": "green outlined circle immediately right of the latest exact outgoing target bubble",
   "calendar_visible": false,
   "calendar_today_highlighted": false,
   "calendar_today_label": "27",
@@ -198,6 +202,7 @@ Run state:
 
 Focus on what is currently visible only.
 If the task is about sending a message, extract the exact visible composer text and the newest visible sent message conservatively.
+For sent-message success, also look for the small green circular send/read status indicator immediately to the right of the newest exact outgoing target message. Empty green outline means sent; partially filled green means seen/read. Ignore unrelated green UI elements.
 """
 
 

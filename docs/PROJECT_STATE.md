@@ -1,6 +1,6 @@
 # Project State
 
-Last updated from local workspace on 2026-04-29.
+Last updated from local workspace on 2026-04-30.
 
 ## Current Goal
 
@@ -27,6 +27,10 @@ Implemented/available in the current code:
 - Goal classification in `agent/gui/goals.py`.
 - GUI loop refactor started: `agent/gui/loop.py` now keeps orchestration while chat-specific gates live in `agent/gui/chat_flow.py`, message-specific gates live in `agent/gui/message_flow.py`, and calendar-specific gates live in `agent/gui/calendar_flow.py`.
 - Message send/compose flow now tracks a pending message text and deterministically focuses, selects, clears, then retypes when the composer already contains stale or mismatched text.
+- Send-message goal parsing now separates target chat/contact labels from labeled payload text such as `发送消息：...`.
+- Feishu window matching now handles the Chinese desktop title `飞书` when `GUI_TARGET_APP=Feishu`.
+- Send-message verification can use the green circular Feishu send/read status indicator next to the exact outgoing target bubble.
+- Synthetic waits are task-specific; message exact-text and send-status checks use short `100ms` waits.
 - Completion gates for:
   - `send_message`
   - `compose_message`
@@ -45,13 +49,15 @@ branch: windows-refactor
 tracking: myfork/windows-refactor
 origin: https://github.com/HuXiangyu123/CUA-Lark-Agent.git
 myfork: https://github.com/xiaodeng-lp/CUA-Lark-Agent.git
-latest local/remote commit: 9bd8640 Fix Windows high-DPI screenshot capture
+latest local/remote commit before this local batch: 7bcb37f Extract open chat flow helpers
 ```
 
-Most recent local commit after this pass:
+Recent local commits already on this branch before this local batch:
 
 ```text
-0744188 Align Windows GUI automation with DPI awareness
+e19b492 Update README Windows support wording
+ee8f04b Refactor GUI message and calendar flows
+7bcb37f Extract open chat flow helpers
 ```
 
 ## Current Run State
@@ -59,18 +65,34 @@ Most recent local commit after this pass:
 Verified locally in this handoff pass:
 
 ```powershell
-uv run python -m py_compile run.py agent\gui\dpi.py agent\gui\capture.py agent\gui\window.py agent\gui\controller.py agent\gui\loop.py agent\gui\chat_flow.py agent\gui\message_flow.py agent\gui\calendar_flow.py
+uv run python -m py_compile agent\gui\window.py agent\gui\goals.py agent\gui\loop.py tests\test_gui_window.py tests\test_gui_loop.py
+uv run python -m unittest tests.test_gui_window tests.test_gui_loop
 uv run python -m unittest discover -s tests
 ```
 
 Result:
 
 ```text
-Ran 64 tests
+Ran 68 tests
 OK
 ```
 
-Important difference from older handoff text: older docs/chat said 53 tests, and intermediate handoff text said 60 or 63 tests. Current code has 64 tests passing.
+Important difference from older handoff text: older docs/chat said 53 tests, and intermediate handoff text said 60, 63, or 64 tests. Current code has 68 tests passing.
+
+Recent real GUI validation:
+
+```text
+Dry-run observe trace: traces\20260430-154525-714770
+Timed real send trace: traces\20260430-154607-109016
+Timed real send goal: 搜索群聊“bot功能测试”并发送消息：CUA恢复修复计时测试 20260430-154605
+Timed real send result: success=true, final_status=done, step_count=8, total wall time about 209.088s
+```
+
+Recent failures fixed:
+
+- `搜索群聊“bot功能测试”并发送消息：...` originally parsed the quoted group name as the message payload. Fixed by preferring labeled message payload text and extracting `target_label` separately.
+- A minimized Feishu window titled `飞书` was not reliably matched by `GUI_TARGET_APP=Feishu`, so a run captured a browser/PackyAPI page. Fixed by matching Chinese Feishu titles correctly.
+- Send confirmation now has a structured green circular status-icon signal, with composer-cleared/exact-message evidence as fallback.
 
 ## Actual Entry Points And Commands
 
@@ -214,6 +236,7 @@ Reconfirm in every new context:
 
 - Current successful workflows are still mostly tasks we explicitly tested/prompted. General Feishu workflow learning requires planned RAG/SOP work.
 - Token cost is high because each GUI step can send screenshots to a large multimodal model.
+- End-to-end GUI latency is still high. The latest successful timed send spent about 12-17 seconds on many screenshot + VLM perception/planning round trips even though message wait actions now use `100ms`.
 - Visual verification can be imperfect; completion gates mitigate but do not remove all risk.
 - Message composer behavior depends on reliably focusing the editable composer region before `Ctrl+A` / `Backspace`; layout changes may require retuning the focus heuristic.
 - Feishu UI layout/version/language changes may break coordinate or semantic assumptions.

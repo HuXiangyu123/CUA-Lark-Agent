@@ -42,6 +42,10 @@ def classify_goal_kind(goal: str) -> str:
 
 
 def extract_target_message(goal: str) -> str:
+    labeled_message = _extract_labeled_message_text(goal)
+    if labeled_message:
+        return labeled_message
+
     quoted = extract_first_quoted_text(goal)
     if quoted:
         return quoted
@@ -64,6 +68,18 @@ def extract_target_message(goal: str) -> str:
         if match:
             return _clean_extracted_text(match.group(1))
 
+    return ""
+
+
+def _extract_labeled_message_text(goal: str) -> str:
+    patterns = (
+        r"(?:发送|发出|发|send)\s*(?:一条)?\s*(?:消息|信息|message)\s*[:：]\s*(.+)$",
+        r"(?:并|然后|and\s+then|then)?\s*send\s+message\s*[:：]\s*(.+)$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, goal, flags=re.IGNORECASE)
+        if match:
+            return _clean_extracted_text(match.group(1))
     return ""
 
 
@@ -135,6 +151,8 @@ def looks_like_clear_composer_goal(goal: str) -> bool:
 def extract_target_label(goal: str, goal_kind: str) -> str:
     if goal_kind in {"open_calendar", "create_calendar_event"}:
         return "Calendar"
+    if goal_kind == "send_message":
+        return _extract_chat_label_for_send_goal(goal)
     if goal_kind != "open_chat":
         return ""
 
@@ -151,6 +169,18 @@ def extract_target_label(goal: str, goal_kind: str) -> str:
         if match:
             return _clean_extracted_text(match.group(1))
 
+    return ""
+
+
+def _extract_chat_label_for_send_goal(goal: str) -> str:
+    patterns = (
+        r"(?:搜索|查找|打开|进入|切换到|切到|点开|点击|search|find|open|switch to)[^\"'“”‘’\n]{0,30}(?:群聊|聊天|会话|联系人|contact|chat|conversation)\s*[\"“‘']([^\"“”‘’']{1,120})[\"”’']",
+        r"(?:群聊|聊天|会话|联系人|contact|chat|conversation)\s*[\"“‘']([^\"“”‘’']{1,120})[\"”’']",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, goal, flags=re.IGNORECASE)
+        if match:
+            return _clean_extracted_text(match.group(1))
     return ""
 
 

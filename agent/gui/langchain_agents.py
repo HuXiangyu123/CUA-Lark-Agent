@@ -55,6 +55,9 @@ class PerceptionRouteStateModel(BaseModel):
     sent_message_visible: bool = False
     sent_message_exact_match: bool = False
     latest_visible_message: str = ""
+    sent_message_status_visible: bool = False
+    sent_message_status_kind: str = ""
+    sent_message_status_evidence: str = ""
     calendar_visible: bool = False
     calendar_today_highlighted: bool = False
     calendar_today_label: str = ""

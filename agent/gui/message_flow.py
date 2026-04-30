@@ -225,6 +225,17 @@ def apply_message_visual_state(
         run_state.send_visually_confirmed = True
         run_state.current_stage = "verify"
         append_evidence(run_state, "Current screenshot shows the exact target message after this run submitted it.")
+        if visual_state.sent_message_status_visible:
+            run_state.send_status_visually_confirmed = True
+            status_kind = str(getattr(visual_state, "sent_message_status_kind", "") or "sent").strip()
+            status_evidence = str(getattr(visual_state, "sent_message_status_evidence", "") or "").strip()
+            detail = f" as {status_kind}" if status_kind else ""
+            append_evidence(
+                run_state,
+                "Current screenshot shows the Feishu green circular send/read status indicator "
+                f"to the right of the exact outgoing target message{detail}."
+                + (f" Evidence: {status_evidence}" if status_evidence else ""),
+            )
     elif submitted_target_this_run and visual_state.composer_empty:
         run_state.send_visually_confirmed = True
         run_state.current_stage = "verify"
@@ -333,12 +344,22 @@ def refresh_message_done_gate(run_state: Any) -> bool:
             run_state.done_gate_ready = False
             run_state.done_gate_reason = "This run has not visually verified the exact target draft text in the composer."
             return True
-        if not run_state.perception_stable:
+        if not (
+            run_state.perception_stable
+            or (
+                run_state.target_message_typed
+                and run_state.target_message_visually_verified
+                and run_state.perception_repeat_count >= 1
+            )
+        ):
             run_state.done_gate_ready = False
             run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
             return True
         run_state.done_gate_ready = True
-        run_state.done_gate_reason = "This run typed and visually verified the exact draft text without sending it."
+        if run_state.perception_stable:
+            run_state.done_gate_reason = "This run typed and visually verified the exact draft text without sending it."
+        else:
+            run_state.done_gate_reason = "This run typed and visually verified the exact draft text without sending it; one exact composer observation is enough for a draft-only goal."
         return True
 
     if run_state.goal_kind == "send_message":
@@ -362,7 +383,7 @@ def refresh_message_done_gate(run_state: Any) -> bool:
                 "This run has not visually confirmed that the exact target message was sent successfully."
             )
             return True
-        if not run_state.perception_stable:
+        if not run_state.perception_stable and not run_state.send_status_visually_confirmed:
             run_state.done_gate_ready = False
             run_state.done_gate_reason = "The visual completion signal is not stable across observations yet."
             return True
@@ -371,7 +392,10 @@ def refresh_message_done_gate(run_state: Any) -> bool:
             run_state.done_gate_reason = "This run submitted something, but there is no recorded compose step before it."
             return True
         run_state.done_gate_ready = True
-        run_state.done_gate_reason = "This run recorded exact text verification, submit, and visual send confirmation."
+        if run_state.send_status_visually_confirmed:
+            run_state.done_gate_reason = "This run recorded exact text verification, submit, and the green circular Feishu send/read status indicator."
+        else:
+            run_state.done_gate_reason = "This run recorded exact text verification, submit, and visual send confirmation."
         return True
 
     return False
@@ -390,6 +414,9 @@ def describe_message_visual_state(run_state: Any, *, normalize_text: Callable[[s
     if composer_text and intended_text and normalize_text(composer_text) != normalize_text(intended_text):
         return "composer text mismatches target"
     if bool(visual_state.get("sent_message_exact_match", False)):
+        if bool(visual_state.get("sent_message_status_visible", False)):
+            status_kind = str(visual_state.get("sent_message_status_kind", "")).strip()
+            return f"exact target message visible with green circular send/read status{f' ({status_kind})' if status_kind else ''}"
         return "exact target message visible in chat"
     if bool(visual_state.get("composer_exact_match", False)):
         return "composer text exactly matches target"

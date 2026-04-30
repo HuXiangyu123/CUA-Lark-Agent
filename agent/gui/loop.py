@@ -76,6 +76,16 @@ _ACTION_TYPES = {
 }
 
 
+_WAIT_DURATIONS_MS = {
+    "pre_submit_exact_text": 100,
+    "draft_verify": 100,
+    "send_status_poll": 100,
+    "open_chat_stabilize": 800,
+    "calendar_stabilize": 800,
+    "generic_stabilize": 800,
+}
+
+
 @dataclass
 class GuiRunResult:
     success: bool
@@ -131,6 +141,7 @@ class GuiRunState:
     target_message_visually_verified: bool = False
     emoji_composed: bool = False
     send_visually_confirmed: bool = False
+    send_status_visually_confirmed: bool = False
     typed_texts: list[str] = field(default_factory=list)
     completion_evidence: list[str] = field(default_factory=list)
     last_visual_state: dict[str, Any] = field(default_factory=dict)
@@ -187,6 +198,7 @@ class GuiRunState:
             "target_message_visually_verified": self.target_message_visually_verified,
             "emoji_composed": self.emoji_composed,
             "send_visually_confirmed": self.send_visually_confirmed,
+            "send_status_visually_confirmed": self.send_status_visually_confirmed,
             "typed_texts": list(self.typed_texts),
             "completion_evidence": list(self.completion_evidence),
             "last_visual_state": dict(self.last_visual_state),
@@ -231,6 +243,9 @@ class GuiPerceptionState:
     sent_message_visible: bool = False
     sent_message_exact_match: bool = False
     latest_visible_message: str = ""
+    sent_message_status_visible: bool = False
+    sent_message_status_kind: str = ""
+    sent_message_status_evidence: str = ""
     calendar_visible: bool = False
     calendar_today_highlighted: bool = False
     calendar_today_label: str = ""
@@ -262,6 +277,9 @@ class GuiPerceptionState:
             sent_message_visible=bool(data.get("sent_message_visible", False)),
             sent_message_exact_match=bool(data.get("sent_message_exact_match", False)),
             latest_visible_message=str(data.get("latest_visible_message", "")).strip(),
+            sent_message_status_visible=bool(data.get("sent_message_status_visible", False)),
+            sent_message_status_kind=str(data.get("sent_message_status_kind", "")).strip(),
+            sent_message_status_evidence=str(data.get("sent_message_status_evidence", "")).strip(),
             calendar_visible=bool(data.get("calendar_visible", False)),
             calendar_today_highlighted=bool(data.get("calendar_today_highlighted", False)),
             calendar_today_label=str(data.get("calendar_today_label", "")).strip(),
@@ -293,6 +311,9 @@ class GuiPerceptionState:
             "sent_message_visible": self.sent_message_visible,
             "sent_message_exact_match": self.sent_message_exact_match,
             "latest_visible_message": self.latest_visible_message,
+            "sent_message_status_visible": self.sent_message_status_visible,
+            "sent_message_status_kind": self.sent_message_status_kind,
+            "sent_message_status_evidence": self.sent_message_status_evidence,
             "calendar_visible": self.calendar_visible,
             "calendar_today_highlighted": self.calendar_today_highlighted,
             "calendar_today_label": self.calendar_today_label,
@@ -319,6 +340,8 @@ class GuiPerceptionState:
                 "composer_exact" if self.composer_exact_match else "composer_not_exact",
                 "composer_empty" if self.composer_empty else "composer_filled",
                 "sent_exact" if self.sent_message_exact_match else "sent_not_exact",
+                "sent_status" if self.sent_message_status_visible else "sent_status_absent",
+                _normalize_text(self.sent_message_status_kind),
                 _normalize_text(self.primary_view),
                 _normalize_text(self.selected_sidebar_item),
                 "calendar_visible" if self.calendar_visible else "calendar_not_visible",
@@ -680,43 +703,46 @@ class GuiRunner:
                 return decision, last_content
 
             if submit_gate_error == "The composer exact-match observation is not stable yet. Re-observe once before submitting.":
-                wait_decision = GuiDecision.from_dict(
-                    {
-                        "status": "continue",
-                        "stage": "verify",
-                        "current_state": decision.current_state or "Exact target text is visible in the composer but the observation is not stable yet.",
-                        "progress_assessment": "Deferring submit by one step so the GUI loop can capture one more verification frame.",
-                        "previous_step_ok": True,
-                        "success_criteria": "A repeated observation should confirm the exact target text remains visible before submit.",
-                        "completion_evidence": decision.completion_evidence or "Submit was deferred because the exact-match composer observation was not stable yet.",
-                        "action": {
-                            "type": "wait",
-                            "target": "allow one more stable verification frame before submit",
-                            "duration_ms": 800,
-                        },
-                    }
+                wait_decision = _build_wait_decision(
+                    wait_key="pre_submit_exact_text",
+                    target="allow one more exact-text verification frame before submit",
+                    current_state=decision.current_state or "Exact target text is visible in the composer but the observation is not stable yet.",
+                    progress_assessment="Deferring submit by one short step so the GUI loop can capture one more exact-text verification frame.",
+                    success_criteria="A repeated observation should confirm the exact target text remains visible before submit.",
+                    completion_evidence=decision.completion_evidence or "Submit was deferred because the exact-match composer observation was not stable yet.",
                 )
                 synthetic_response = json.dumps(wait_decision.to_dict(), ensure_ascii=False, indent=2)
                 return wait_decision, synthetic_response
 
             if done_gate_error == "The visual completion signal is not stable across observations yet.":
-                wait_decision = GuiDecision.from_dict(
-                    {
-                        "status": "continue",
-                        "stage": "verify",
-                        "current_state": decision.current_state or "The goal appears complete, but one more stable verification frame is required.",
-                        "progress_assessment": "Deferring completion by one step so the GUI loop can capture one more stable post-send observation.",
-                        "previous_step_ok": True,
-                        "success_criteria": "A repeated observation should keep showing the cleared composer or newly sent exact target message.",
-                        "completion_evidence": decision.completion_evidence or "Completion was deferred because the visual success signal was not stable yet.",
-                        "workflow_steps": decision.workflow_steps,
-                        "active_step_index": decision.active_step_index,
-                        "action": {
-                            "type": "wait",
-                            "target": "allow one more stable verification frame after send",
-                            "duration_ms": 800,
-                        },
-                    }
+                wait_target = "observe one more frame for sent-message status"
+                progress_assessment = "Deferring completion by one step so the GUI loop can capture one more stable post-send observation."
+                success_criteria = "The next observation should show the sent message status icon or keep showing the cleared composer/newly sent exact target message."
+                wait_key = "send_status_poll" if run_state.goal_kind == "send_message" else "generic_stabilize"
+                if run_state.goal_kind == "compose_message":
+                    wait_key = "draft_verify"
+                    wait_target = "allow one more stable verification frame for unsent draft"
+                    progress_assessment = "Deferring completion by one step so the GUI loop can confirm the unsent draft remains visible."
+                    success_criteria = "A repeated observation should keep showing the exact pending draft text without any submit action."
+                elif run_state.goal_kind == "open_chat":
+                    wait_key = "open_chat_stabilize"
+                    wait_target = "allow one more stable verification frame for open chat"
+                    progress_assessment = "Deferring completion by one step so the target chat remains visibly open."
+                    success_criteria = "A repeated observation should keep showing the target conversation as the active chat."
+                elif run_state.goal_kind in {"open_calendar", "create_calendar_event"}:
+                    wait_key = "calendar_stabilize"
+                    wait_target = "allow one more stable verification frame for calendar"
+                    progress_assessment = "Deferring completion by one step so the calendar state remains visibly stable."
+                    success_criteria = "A repeated observation should keep showing the required calendar state."
+                wait_decision = _build_wait_decision(
+                    wait_key=wait_key,
+                    target=wait_target,
+                    current_state=decision.current_state or "The goal appears complete, but one more stable verification frame is required.",
+                    progress_assessment=progress_assessment,
+                    success_criteria=success_criteria,
+                    completion_evidence=decision.completion_evidence or "Completion was deferred because the visual success signal was not stable yet.",
+                    workflow_steps=decision.workflow_steps,
+                    active_step_index=decision.active_step_index,
                 )
                 synthetic_response = json.dumps(wait_decision.to_dict(), ensure_ascii=False, indent=2)
                 return wait_decision, synthetic_response
@@ -793,6 +819,39 @@ def _coerce_content(content: Any) -> str:
                 texts.append(str(item.text))
         return "\n".join(part for part in texts if part)
     return str(content)
+
+
+def _build_wait_decision(
+    *,
+    wait_key: str,
+    target: str,
+    current_state: str,
+    progress_assessment: str,
+    success_criteria: str,
+    completion_evidence: str = "",
+    workflow_steps: list[str] | None = None,
+    active_step_index: int | None = None,
+) -> GuiDecision:
+    duration_ms = _WAIT_DURATIONS_MS.get(wait_key, _WAIT_DURATIONS_MS["generic_stabilize"])
+    payload: dict[str, Any] = {
+        "status": "continue",
+        "stage": "verify",
+        "current_state": current_state,
+        "progress_assessment": progress_assessment,
+        "previous_step_ok": True,
+        "success_criteria": success_criteria,
+        "completion_evidence": completion_evidence,
+        "workflow_steps": workflow_steps or [],
+        "active_step_index": active_step_index,
+        "action": {
+            "type": "wait",
+            "target": target,
+            "duration_ms": duration_ms,
+        },
+    }
+    if not payload["workflow_steps"]:
+        payload.pop("active_step_index")
+    return GuiDecision.from_dict(payload)
 
 
 def _normalize_decision_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1250,6 +1309,7 @@ def _summarize_run_state(run_state: GuiRunState) -> str:
             f"- Target message visually verified: {run_state.target_message_visually_verified}",
             f"- Emoji composed this run: {run_state.emoji_composed}",
             f"- Send visually confirmed: {run_state.send_visually_confirmed}",
+            f"- Send status icon confirmed: {run_state.send_status_visually_confirmed}",
             f"- Composer reset required: {run_state.composer_reset_required}",
             f"- Composer reset started: {run_state.composer_reset_started}",
             f"- Composer reset completed: {run_state.composer_reset_satisfied}",
@@ -1320,10 +1380,17 @@ def _sanitize_perception_state(run_state: GuiRunState, visual_state: GuiPercepti
         visual_state.composer_exact_match = False
 
     visual_state.latest_visible_message = latest_visible_message
+    visual_state.sent_message_status_kind = _normalize_text(visual_state.sent_message_status_kind).lower()
+    visual_state.sent_message_status_evidence = _normalize_text(visual_state.sent_message_status_evidence)
     if target_message:
         visual_state.sent_message_exact_match = bool(visual_state.sent_message_visible) and bool(latest_visible_message) and latest_visible_message == target_message
     elif not latest_visible_message:
         visual_state.sent_message_exact_match = False
+
+    if not visual_state.sent_message_exact_match:
+        visual_state.sent_message_status_visible = False
+        visual_state.sent_message_status_kind = ""
+        visual_state.sent_message_status_evidence = ""
 
     if visual_state.composer_exact_match and visual_state.composer_empty:
         visual_state.composer_exact_match = False

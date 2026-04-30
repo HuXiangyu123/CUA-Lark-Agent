@@ -272,14 +272,15 @@ def _window_matches_app_title(title: str, candidates: list[str]) -> bool:
     if not normalized_title:
         return False
 
+    normalized_candidates = [candidate.strip().lower() for candidate in candidates if candidate.strip()]
     for candidate in candidates:
         normalized_candidate = candidate.strip().lower()
         if not normalized_candidate:
             continue
         if normalized_candidate in {"feishu", "lark"}:
-            if normalized_title in {"feishu", "lark", "飞书"}:
+            if normalized_title in {"feishu", "lark"}:
                 return True
             continue
         if normalized_candidate in normalized_title:
             return True
-    return False
+    return any(candidate in normalized_title for candidate in normalized_candidates if candidate not in {"feishu", "lark"})

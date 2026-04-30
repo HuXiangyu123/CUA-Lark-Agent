@@ -407,6 +407,81 @@ Residual risks:
 
 - Reconfirm PR state before assuming it is open/unmerged.
 
+### 13. Timed Group-Chat Send Regression And Window Restore Fix
+
+How tested:
+
+```powershell
+uv run python -m py_compile agent\gui\window.py agent\gui\goals.py agent\gui\loop.py tests\test_gui_window.py tests\test_gui_loop.py
+uv run python -m unittest tests.test_gui_window tests.test_gui_loop
+uv run python -m unittest discover -s tests
+uv run python run.py gui-run "观察当前飞书窗口，判断当前页面是什么，不要执行任何真实操作" --dry-run --json-output --progress
+uv run python run.py gui-run "搜索群聊“bot功能测试”并发送消息：CUA恢复修复计时测试 20260430-154605" --json-output --progress
+```
+
+Failed runs before fix:
+
+- Trace `traces\20260430-003524-350719`: the task `搜索群聊“bot功能测试”并发送消息：CUA计时测试 20260430-003522` reached `max_steps_exceeded` after about `296.884s`.
+- Root cause 1: `extract_target_message()` took the first quoted text, so the group name `bot功能测试` became `target_message` and `pending_message_text`. The actual message after `发送消息：` was not treated as the pending message.
+- Symptom: the runner typed `bot功能测试`, then later perceptions/plans saw the real requested message `CUA计时测试 ...` as missing and repeatedly selected/cleared/dismissed IME instead of submitting.
+- Trace `traces\20260430-144500-112802`: after the parsing fix, the run blocked at step 0 because the captured screenshot was a browser/PackyCode page, not Feishu.
+- Root cause 2: minimized Feishu restore code still existed, but `_window_matches_app_title()` special-cased `Feishu/Lark` and skipped the Chinese candidate `飞书`, so the minimized Chinese-titled Feishu window was not matched reliably.
+
+Fix record:
+
+- `agent/gui/goals.py`: labeled send-message text such as `发送消息：...` now wins over quoted chat names.
+- `agent/gui/goals.py`: send-message goals can extract a target chat/contact label separately from the pending message text.
+- `agent/gui/window.py`: `Feishu` app matching now matches Chinese window title `飞书` while still avoiding unrelated windows such as Edge/PackyAPI.
+- `agent/gui/langchain_agents.py`, `agent/gui/loop.py`, `agent/gui/message_flow.py`, `agent/gui/prompts.py`: perception and completion gates now include `sent_message_status_visible`, `sent_message_status_kind`, and `sent_message_status_evidence` for the green circular Feishu send/read status icon.
+- `agent/gui/loop.py`: synthetic waits now use task-specific `duration_ms` values. Message input/submit verification waits use `100ms`; open-chat/calendar stabilizers keep longer waits.
+- `tests/test_gui_loop.py`: added regressions for labeled send-message extraction, separate chat label/message state, green status send confirmation, and shorter message wait duration.
+- `tests/test_gui_window.py`: added regression for `Feishu` matching Chinese title `飞书` and not matching PackyAPI/Edge.
+
+Successful timed run after fix:
+
+```text
+Goal: 搜索群聊“bot功能测试”并发送消息：CUA恢复修复计时测试 20260430-154605
+Trace: traces\20260430-154607-109016
+Result: success=true, final_status=done, step_count=8
+Total wall time: 209.088s
+```
+
+Step timing:
+
+| Step | Action | Delta | Cumulative |
+|---|---|---:|---:|
+| 0 | Initial capture and perception | 15.159s | 15.159s |
+| 1 decision | click: message composer focus | 0.001s | 15.160s |
+| 1 completed | focus composer | 14.836s | 29.997s |
+| 2 decision | hotkey: message composer select all | 0.000s | 29.997s |
+| 2 completed | select stale text | 15.295s | 45.292s |
+| 3 decision | hotkey: message composer delete selection | 0.000s | 45.292s |
+| 3 completed | clear composer | 15.426s | 60.718s |
+| 4 decision | type: message composer type pending text | 0.000s | 60.719s |
+| 4 completed | type target message | 16.498s | 77.217s |
+| 5 decision | wait: exact-text verification before submit | 12.503s | 89.720s |
+| 5 completed | first pre-submit verification | 15.818s | 105.538s |
+| 6 decision | wait: exact-text verification before submit | 13.749s | 119.287s |
+| 6 completed | second pre-submit verification | 14.862s | 134.149s |
+| 7 decision | click: blue send button | 12.919s | 147.068s |
+| 7 completed | submit | 16.858s | 163.926s |
+| 8 decision | wait: sent message status verification | 15.317s | 179.243s |
+| 8 completed | post-send visual confirmation | 17.103s | 196.345s |
+| 9 decision | done | 12.579s | 208.925s |
+| 9 finished | final result | 0.007s | 208.932s |
+
+Result:
+
+- `uv run python -m unittest discover -s tests`: `Ran 68 tests`, `OK`.
+- Dry-run observation now captures Feishu after restore instead of the browser.
+- Real group-chat send completed and was visually verified.
+
+Residual risks:
+
+- End-to-end latency is still dominated by screenshot + VLM perception/planning round trips, around 12-17 seconds per step on this run.
+- The send flow still used two pre-submit verification waits. This is safe but slow; future work can collapse duplicate exact-text confirmation when the visual signature is already stable enough.
+- Green status icon verification depends on VLM perception. Composer-cleared and exact-message-visible remain fallback evidence.
+
 ## Known Historical Bugs And Fixes
 
 | Issue | Condition | Suspected Cause | Fix/Current State | Residual Risk |
@@ -415,6 +490,8 @@ Residual risks:
 | Image input failure | VLM call with screenshots | Program call path, not necessarily model support | Streaming Responses API | Provider differences |
 | Clear draft failed | `Ctrl+A` selected whole Feishu page | Composer not focused | Click text area then Ctrl+A/Backspace | Composer layout changes |
 | Send success not detected | Sent message but run retried | Visual latest-message extraction imperfect | Done gate allows typed+submit+composer-cleared evidence | Some send states may still block |
+| Group-chat send typed group name | Goal included quoted group name plus `发送消息：...` | Message extraction preferred first quoted text | Labeled send-message text now wins; target chat label is separate | More phrasing variants may need tests |
+| Minimized Feishu not restored | Feishu title is Chinese `飞书` | Window title matcher skipped Chinese candidate after `Feishu` special case | `Feishu` now matches `飞书`; regression test added | Windows focus stealing can still interfere |
 | Old message/event counted as success | Existing visible content matched target | No baseline distinction | Baseline guards and current-run action requirements | Need more regression tests |
 | Direct push denied | Pushing to teammate repo | No write permission | Push to fork and PR | PR must be reviewed/merged |
 
