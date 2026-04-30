@@ -22,6 +22,7 @@ from agent.gui.loop import (
     GuiRunner,
     _maybe_apply_feishu_emoji_heuristic,
     _normalize_decision_payload,
+    _message_composer_focus_point,
 )
 from agent.gui.schema import GuiDecision
 
@@ -1168,6 +1169,20 @@ class GuiLoopTest(unittest.TestCase):
         self.assertEqual(decision.action.x, 999)
         self.assertEqual(decision.action.y, 693)
 
+    def test_composer_focus_point_targets_right_chat_input_area(self):
+        small = ScreenshotArtifact(path=_mock_image_path(), width=1075, height=756)
+        large = ScreenshotArtifact(path=_mock_image_path(), width=2048, height=1209)
+
+        small_x, small_y = _message_composer_focus_point(small)
+        large_x, large_y = _message_composer_focus_point(large)
+
+        self.assertGreater(small_x, int(1075 * 0.5))
+        self.assertLess(small_x, 1075 - 180)
+        self.assertEqual(small_y, 696)
+        self.assertGreater(large_x, int(2048 * 0.55))
+        self.assertLess(large_x, 2048 - 700)
+        self.assertEqual(large_y, 1119)
+
     def test_wait_action_with_submit_word_is_not_treated_as_submit(self):
         observation = ScreenshotArtifact(
             path=_mock_image_path(),
@@ -1350,6 +1365,7 @@ class GuiLoopTest(unittest.TestCase):
         self.assertIsNotNone(focus)
         self.assertEqual(focus.action.type, "click")
         self.assertEqual(focus.action.target, "message composer focus")
+        self.assertGreater(focus.action.x, observation.width // 2)
 
         select_all = _maybe_apply_message_compose_heuristic(
             observation,

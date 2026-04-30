@@ -49,8 +49,7 @@ def maybe_apply_message_compose_heuristic(
         return None
 
     if focus_count == 0:
-        composer_x = max(24, min(observation.width - 180, int(observation.width * 0.08)))
-        composer_y = max(1, observation.height - 45)
+        composer_x, composer_y = _message_composer_focus_point(observation)
         return decision_from_dict(
             {
                 "status": "continue",
@@ -129,6 +128,16 @@ def maybe_apply_message_compose_heuristic(
         )
 
     return None
+
+
+def _message_composer_focus_point(observation: Any) -> tuple[int, int]:
+    """Click the text-editing area of Feishu's right-side chat composer."""
+    width = int(getattr(observation, "width", 0) or 0)
+    height = int(getattr(observation, "height", 0) or 0)
+    x = max(24, min(width - 220, int(width * 0.58)))
+    y_offset = max(60, min(90, int(height * 0.075)))
+    y = max(1, height - y_offset)
+    return x, y
 
 
 def initialize_send_message_baseline(run_state: Any, visual_state: Any, *, append_evidence: Callable[[Any, str], None]) -> None:

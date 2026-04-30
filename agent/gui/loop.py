@@ -992,11 +992,9 @@ def _maybe_apply_clear_composer_heuristic(
         )
 
     if focus_count <= delete_count:
-        # Click the left text-editing part of the composer. The center/right
-        # side of Feishu's composer often contains toolbar buttons, and Ctrl+A
-        # after clicking there can select the whole chat page instead.
-        composer_x = max(24, min(observation.width - 180, int(observation.width * 0.08)))
-        composer_y = max(1, observation.height - 45)
+        # Click the text-editing part of the right-side chat composer. The
+        # toolbar buttons live on the composer right; the app/sidebar live left.
+        composer_x, composer_y = _message_composer_focus_point(observation)
         return GuiDecision.from_dict(
             {
                 "status": "continue",
@@ -1478,6 +1476,15 @@ def _is_submit_action(action: Any) -> bool:
         return True
 
     return False
+
+
+def _message_composer_focus_point(observation: ScreenshotArtifact) -> tuple[int, int]:
+    width = int(observation.width)
+    height = int(observation.height)
+    x = max(24, min(width - 220, int(width * 0.58)))
+    y_offset = max(60, min(90, int(height * 0.075)))
+    y = max(1, height - y_offset)
+    return x, y
 
 
 def _target_looks_like_send_control(target: str) -> bool:
