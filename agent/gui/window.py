@@ -194,14 +194,18 @@ def translate_action_from_image_to_screen(action: GuiAction, observation: Screen
         return action
 
     translated = replace(action)
+    origin_x = observation.action_origin_x if observation.action_origin_x is not None else observation.origin_x
+    origin_y = observation.action_origin_y if observation.action_origin_y is not None else observation.origin_y
+    scale_x = observation.action_scale_x if observation.action_scale_x is not None else observation.scale_x
+    scale_y = observation.action_scale_y if observation.action_scale_y is not None else observation.scale_y
     if translated.x is not None:
-        translated.x = observation.origin_x + int(round(translated.x / max(observation.scale_x, 1e-6)))
+        translated.x = origin_x + int(round(translated.x / max(scale_x, 1e-6)))
     if translated.y is not None:
-        translated.y = observation.origin_y + int(round(translated.y / max(observation.scale_y, 1e-6)))
+        translated.y = origin_y + int(round(translated.y / max(scale_y, 1e-6)))
     if translated.end_x is not None:
-        translated.end_x = observation.origin_x + int(round(translated.end_x / max(observation.scale_x, 1e-6)))
+        translated.end_x = origin_x + int(round(translated.end_x / max(scale_x, 1e-6)))
     if translated.end_y is not None:
-        translated.end_y = observation.origin_y + int(round(translated.end_y / max(observation.scale_y, 1e-6)))
+        translated.end_y = origin_y + int(round(translated.end_y / max(scale_y, 1e-6)))
     return translated
 
 

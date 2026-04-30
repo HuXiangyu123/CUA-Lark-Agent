@@ -1,6 +1,7 @@
 import unittest
+from unittest import mock
 
-from agent.gui.capture import _region_to_image_box
+from agent.gui.capture import _region_to_image_box, _windows_action_mapping_for_region
 
 
 class GuiCaptureTest(unittest.TestCase):
@@ -30,6 +31,30 @@ class GuiCaptureTest(unittest.TestCase):
             image_size=(1500, 1200),
         )
         self.assertEqual(box, (0, 0, 375, 270))
+
+    def test_windows_action_mapping_can_force_logical_mouse_coords(self):
+        with mock.patch.dict("os.environ", {"GUI_MOUSE_COORD_MODE": "logical"}):
+            origin, scale = _windows_action_mapping_for_region(
+                region=(100, 80, 1000, 700),
+                virtual_origin=(0, 0),
+                virtual_size=(1707, 1067),
+                desktop_image_size=(2560, 1600),
+                crop_box=(150, 120, 1650, 1170),
+            )
+        self.assertEqual(origin, (100, 80))
+        self.assertEqual(scale, (1.5, 1.5))
+
+    def test_windows_action_mapping_can_force_physical_mouse_coords(self):
+        with mock.patch.dict("os.environ", {"GUI_MOUSE_COORD_MODE": "physical"}):
+            origin, scale = _windows_action_mapping_for_region(
+                region=(100, 80, 1000, 700),
+                virtual_origin=(0, 0),
+                virtual_size=(1707, 1067),
+                desktop_image_size=(2560, 1600),
+                crop_box=(150, 120, 1650, 1170),
+            )
+        self.assertEqual(origin, (150, 120))
+        self.assertEqual(scale, (1.0, 1.0))
 
 
 if __name__ == "__main__":

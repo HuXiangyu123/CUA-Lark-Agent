@@ -22,6 +22,10 @@ class ScreenshotArtifact:
     screen_height: int = 0
     scale_x: float = 1.0
     scale_y: float = 1.0
+    action_origin_x: int | None = None
+    action_origin_y: int | None = None
+    action_scale_x: float | None = None
+    action_scale_y: float | None = None
 
 
 class ScreenCapture:
@@ -73,12 +77,22 @@ class ScreenCapture:
 
         if sys.platform == "win32":
             image, virtual_origin, virtual_size = _grab_windows_desktop()
+            desktop_image_size = image.size
+            image_box = None
             if region is not None:
-                image = image.crop(_region_to_image_box(region, virtual_origin, virtual_size, image.size))
+                image_box = _region_to_image_box(region, virtual_origin, virtual_size, desktop_image_size)
+                image = image.crop(image_box)
             image.save(path)
             pixel_width, pixel_height = _read_image_size(path)
             if region is not None:
                 x, y, width, height = region
+                action_origin, action_scale = _windows_action_mapping_for_region(
+                    region=region,
+                    virtual_origin=virtual_origin,
+                    virtual_size=virtual_size,
+                    desktop_image_size=desktop_image_size,
+                    crop_box=image_box,
+                )
                 return ScreenshotArtifact(
                     path=path,
                     width=pixel_width,
@@ -89,6 +103,10 @@ class ScreenCapture:
                     screen_height=height,
                     scale_x=pixel_width / max(width, 1),
                     scale_y=pixel_height / max(height, 1),
+                    action_origin_x=action_origin[0],
+                    action_origin_y=action_origin[1],
+                    action_scale_x=action_scale[0],
+                    action_scale_y=action_scale[1],
                 )
             return ScreenshotArtifact(
                 path=path,
@@ -247,6 +265,71 @@ def _region_to_image_box(
     right = _clamp(right, left + 1, image_width)
     bottom = _clamp(bottom, top + 1, image_height)
     return left, top, right, bottom
+
+
+def _windows_action_mapping_for_region(
+    *,
+    region: tuple[int, int, int, int],
+    virtual_origin: tuple[int, int],
+    virtual_size: tuple[int, int],
+    desktop_image_size: tuple[int, int],
+    crop_box: tuple[int, int, int, int] | None,
+) -> tuple[tuple[int, int], tuple[float, float]]:
+    """Return the screenshot-local -> pyautogui coordinate mapping.
+
+    On some Windows/DPI setups, pyautogui uses the same logical coordinate
+    space as Win32 window bounds. On others it behaves closer to ImageGrab's
+    physical pixels. Keep capture scaling for VLM prompts, but choose the
+    execution mapping from the runtime mouse coordinate space.
+    """
+    x, y, width, height = region
+    image_width, image_height = desktop_image_size
+    virtual_width, virtual_height = virtual_size
+    image_scale_x = image_width / max(virtual_width, 1)
+    image_scale_y = image_height / max(virtual_height, 1)
+
+    mode = _windows_mouse_coord_mode(virtual_size, desktop_image_size)
+    if mode == "physical":
+        if crop_box is None:
+            crop_box = _region_to_image_box(region, virtual_origin, virtual_size, desktop_image_size)
+        left, top, _, _ = crop_box
+        physical_virtual_origin_x = int(round(virtual_origin[0] * image_scale_x))
+        physical_virtual_origin_y = int(round(virtual_origin[1] * image_scale_y))
+        return (physical_virtual_origin_x + left, physical_virtual_origin_y + top), (1.0, 1.0)
+
+    logical_scale_x = (crop_box[2] - crop_box[0]) / max(width, 1) if crop_box else image_scale_x
+    logical_scale_y = (crop_box[3] - crop_box[1]) / max(height, 1) if crop_box else image_scale_y
+    return (
+        (x, y),
+        (logical_scale_x, logical_scale_y),
+    )
+
+
+def _windows_mouse_coord_mode(
+    virtual_size: tuple[int, int],
+    desktop_image_size: tuple[int, int],
+) -> str:
+    forced = (
+        os.environ.get("GUI_MOUSE_COORD_MODE", "").strip().lower()
+        or os.environ.get("CUA_MOUSE_COORD_MODE", "").strip().lower()
+    )
+    if forced in {"logical", "physical"}:
+        return forced
+
+    try:
+        pyautogui = _load_pyautogui()
+        size = pyautogui.size()
+        mouse_size = (int(size.width), int(size.height))
+    except Exception:
+        return "logical"
+
+    physical_distance = _size_distance(mouse_size, desktop_image_size)
+    logical_distance = _size_distance(mouse_size, virtual_size)
+    return "physical" if physical_distance < logical_distance else "logical"
+
+
+def _size_distance(left: tuple[int, int], right: tuple[int, int]) -> int:
+    return abs(left[0] - right[0]) + abs(left[1] - right[1])
 
 
 def _clamp(value: int, lower: int, upper: int) -> int:

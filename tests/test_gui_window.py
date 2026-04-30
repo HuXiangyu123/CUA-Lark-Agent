@@ -46,6 +46,27 @@ class GuiWindowTest(unittest.TestCase):
         self.assertEqual(translated.x, 911)
         self.assertEqual(translated.y, 1188)
 
+    def test_translate_image_pixels_prefers_action_mapping(self):
+        action = GuiAction.from_dict({"type": "click", "x": 1515, "y": 968})
+        observation = ScreenshotArtifact(
+            path=None,  # type: ignore[arg-type]
+            width=2322,
+            height=1008,
+            origin_x=153,
+            origin_y=704,
+            screen_width=1161,
+            screen_height=504,
+            scale_x=2.0,
+            scale_y=2.0,
+            action_origin_x=306,
+            action_origin_y=1408,
+            action_scale_x=1.0,
+            action_scale_y=1.0,
+        )
+        translated = translate_action_from_image_to_screen(action, observation)
+        self.assertEqual(translated.x, 1821)
+        self.assertEqual(translated.y, 2376)
+
     def test_parse_window_list_ignores_invalid_lines(self):
         windows = _parse_window_list("7,192,1161,636\ninvalid\n658,756,397,28\n")
         self.assertEqual(windows, [(7, 192, 1161, 636), (658, 756, 397, 28)])
