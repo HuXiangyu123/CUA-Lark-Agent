@@ -677,6 +677,7 @@ class GuiRunner:
                 action_decision, raw_response = self.route_agents.decide(prompt, data_url)
                 payload = action_decision.model_dump()
                 decision = GuiDecision.from_dict(payload)
+                _maybe_retarget_feishu_send_click(decision, observation, run_state)
                 last_content = raw_response
             except ValueError as exc:
                 last_error = f"planner returned invalid decision schema: {exc}"
@@ -898,6 +899,32 @@ def _normalize_decision_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "active_step_index": payload.get("active_step_index"),
         "action": action,
     }
+
+
+def _maybe_retarget_feishu_send_click(
+    decision: GuiDecision,
+    observation: ScreenshotArtifact,
+    run_state: GuiRunState,
+) -> None:
+    action = decision.action
+    if run_state.goal_kind != "send_message" or decision.status != "continue" or action is None:
+        return
+    if action.type != "click":
+        return
+    if not (run_state.target_message_typed or run_state.target_message_visually_verified):
+        return
+    target = str(action.target or "").lower()
+    if decision.stage != "submit" and not _target_looks_like_send_control(target):
+        return
+
+    action.x, action.y = _feishu_send_button_point(observation)
+    action.target = "feishu composer send button (heuristic retarget)"
+
+
+def _feishu_send_button_point(observation: ScreenshotArtifact) -> tuple[int, int]:
+    x = max(1, min(observation.width - 2, observation.width - 76))
+    y = max(1, min(observation.height - 2, observation.height - 63))
+    return x, y
 
 
 def _maybe_apply_message_compose_heuristic(

@@ -17,6 +17,7 @@ from agent.gui.loop import (
     _submit_gate_error,
     _looks_like_emoji_goal,
     _maybe_apply_message_compose_heuristic,
+    _maybe_retarget_feishu_send_click,
     GuiMessageVisualState,
     GuiRunner,
     _maybe_apply_feishu_emoji_heuristic,
@@ -1135,6 +1136,37 @@ class GuiLoopTest(unittest.TestCase):
             ),
         )
         self.assertIsNone(_submit_gate_error(submit, run_state))
+
+    def test_send_click_is_retargeted_away_from_plus_toolbar_button(self):
+        observation = ScreenshotArtifact(
+            path=_mock_image_path(),
+            width=1075,
+            height=756,
+            origin_x=0,
+            origin_y=0,
+            screen_width=1075,
+            screen_height=756,
+            scale_x=1.0,
+            scale_y=1.0,
+        )
+        run_state = _build_initial_run_state("在当前飞书聊天中发送消息：测试消息，自动发送", observation)
+        run_state.target_message_typed = True
+        run_state.target_message_visually_verified = True
+        decision = GuiDecision.from_dict(
+            {
+                "status": "continue",
+                "stage": "submit",
+                "current_state": "composer contains target",
+                "progress_assessment": "submit now",
+                "previous_step_ok": True,
+                "success_criteria": "message is sent",
+                "action": {"type": "click", "target": "blue send button", "x": 928, "y": 693},
+            }
+        )
+        _maybe_retarget_feishu_send_click(decision, observation, run_state)
+        self.assertEqual(decision.action.target, "feishu composer send button (heuristic retarget)")
+        self.assertEqual(decision.action.x, 999)
+        self.assertEqual(decision.action.y, 693)
 
     def test_wait_action_with_submit_word_is_not_treated_as_submit(self):
         observation = ScreenshotArtifact(
