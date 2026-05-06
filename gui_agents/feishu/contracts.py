@@ -57,6 +57,8 @@ AssertionId = Literal[
     "base_home_ready",
     "base_new_menu_opened",
     "base_template_gallery_ready",
+    "calendar_event_modal_ready",
+    "calendar_home_ready",
     "chat_title_matched",
     "doc_body_contains_text",
     "doc_editor_ready",

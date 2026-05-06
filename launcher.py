@@ -1711,7 +1711,9 @@ class Launcher:
             font=("Microsoft YaHei UI", 10),
         ).pack(side="left")
         search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=search_var, font=("Microsoft YaHei UI", 10))
+        search_entry = ttk.Entry(
+            search_frame, textvariable=search_var, font=("Microsoft YaHei UI", 10)
+        )
         search_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
         search_entry.focus_set()
 
@@ -1746,11 +1748,7 @@ class Launcher:
                     continue
                 inst = tc["instruction"].strip()
                 if inst not in manifest_map:
-                    tag = (
-                        f"[{tc['product'].upper()}] "
-                        if tc.get("product")
-                        else ""
-                    )
+                    tag = f"[{tc['product'].upper()}] " if tc.get("product") else ""
                     label = f"{tag}{inst}"
                     manifest_map[label] = tc
                     candidate_texts.append(label)
@@ -1789,7 +1787,9 @@ class Launcher:
         listbox.bind("<Double-Button-1>", _on_double_click)
         listbox.bind("<Return>", lambda _e: _on_select())
         search_entry.bind("<Return>", lambda _e: _on_select())
-        search_entry.bind("<Down>", lambda _e: listbox.focus_set() or listbox.select_set(0))
+        search_entry.bind(
+            "<Down>", lambda _e: listbox.focus_set() or listbox.select_set(0)
+        )
 
         # ── action buttons ──
         btn_frame = tk.Frame(dialog, bg=self.colors["panel"])
