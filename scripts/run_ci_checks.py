@@ -9,6 +9,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 CHECKS: list[tuple[str, list[str]]] = [
     (
+        "formatter-version",
+        [sys.executable, "-m", "black", "--version"],
+    ),
+    (
         "black",
         [
             sys.executable,
