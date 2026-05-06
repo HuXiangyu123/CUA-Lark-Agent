@@ -35,8 +35,36 @@ class TestFeishuRuntimePriorTools(unittest.TestCase):
 
         self.assertIn("agent.click(", code)
         self.assertIn("composer input", code)
-        self.assertIn("pyperclip.copy('hello')", code)
-        self.assertIn("pyautogui.hotkey('ctrl', 'v')", code)
+        self.assertIn("_feishu_set_clipboard_text", code)
+        self.assertIn("_feishu_ctrl_combo(0x56)", code)
+        self.assertIn("FEISHU_TYPED_UNICODE", code)
+        self.assertNotIn("pyautogui.hotkey('ctrl', 'v')", code)
+
+    def test_feishu_type_uses_win32_clipboard_paste_for_chinese_text(self) -> None:
+        code = self.aci.feishu_type("项目同步", overwrite=False, enter=False)
+
+        compile(code, "<generated-feishu-type>", "exec")
+        self.assertIn("_FEISHU_PASTE_TEXT = '项目同步'", code)
+        self.assertIn("_feishu_set_clipboard_text", code)
+        self.assertIn("_feishu_ctrl_combo(0x56)", code)
+        self.assertIn("FEISHU_TYPED_UNICODE", code)
+        self.assertNotIn("pyautogui.hotkey('ctrl', 'v')", code)
+
+    def test_feishu_type_after_uia_click_pastes_only_when_click_succeeds(self) -> None:
+        code = self.aci.feishu_type(
+            "项目同步",
+            "添加主题",
+            overwrite=True,
+            enter=True,
+        )
+
+        compile(code, "<generated-feishu-type-click>", "exec")
+        self.assertIn("if clicked:", code)
+        self.assertIn("_feishu_paste_text(_FEISHU_PASTE_TEXT", code)
+        self.assertIn("_overwrite=True", code)
+        self.assertIn("_enter=True", code)
+        self.assertIn("_feishu_ctrl_combo(0x41)", code)
+        self.assertIn("_feishu_tap_key(0x0D)", code)
 
     def test_click_send_button_uses_semantic_grounding(self) -> None:
         self.aci.click = (

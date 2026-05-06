@@ -1,0 +1,354 @@
+{
+  "description": "Feishu eval suite manifest \u2014 read-only test case listing for manual selection, live evidence probes, and future batch evaluation. No live runtime controller.",
+  "generated_at": "2026-05-06T16:15:00+08:00",
+  "products": [
+    "im",
+    "docs",
+    "calendar",
+    "base",
+    "vc"
+  ],
+  "source_documents": [
+    "docs/\u9879\u76ee\u9700\u6c42.md",
+    "docs/product/feishu_gui_agent_prd.md",
+    "docs/feishu_gui_agent_master_plan.md",
+    "docs/process/requirements_coverage_audit_2026-05-06.md"
+  ],
+  "profiles": {
+    "im_send_message": {
+      "product": "im",
+      "assertions": [
+        "chat_title_matched",
+        "message_input_contains_text",
+        "message_sent"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "im_search_message": {
+      "product": "im",
+      "assertions": [
+        "chat_title_matched",
+        "im_search_panel_ready"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "docs_create_blank_doc": {
+      "product": "docs",
+      "assertions": [
+        "docs_new_menu_opened",
+        "doc_editor_ready",
+        "doc_title_contains_text",
+        "doc_body_contains_text"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "docs_open_existing": {
+      "product": "docs",
+      "assertions": [
+        "docs_home_ready",
+        "doc_editor_ready"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "docs_share_check": {
+      "product": "docs",
+      "assertions": [
+        "docs_share_dialog_opened"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "calendar_create_event": {
+      "product": "calendar",
+      "assertions": [
+        "calendar_home_ready",
+        "calendar_event_modal_ready"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "calendar_view_today": {
+      "product": "calendar",
+      "assertions": [
+        "calendar_home_ready"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "base_create_table": {
+      "product": "base",
+      "assertions": [
+        "base_new_menu_opened",
+        "base_editor_ready"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "base_open_recent": {
+      "product": "base",
+      "assertions": [
+        "base_home_ready",
+        "base_editor_ready"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "vc_start_meeting": {
+      "product": "vc",
+      "assertions": [
+        "vc_home_ready",
+        "vc_start_preview_ready",
+        "vc_meeting_active"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "vc_join_meeting": {
+      "product": "vc",
+      "assertions": [
+        "vc_join_preview_ready",
+        "vc_meeting_id_entered",
+        "vc_joined"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "vc_invite_in_meeting": {
+      "product": "vc",
+      "assertions": [
+        "vc_meeting_active",
+        "vc_invite_dialog_opened"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "full"
+    },
+    "cross_window_im_message": {
+      "product": "im",
+      "assertions": [
+        "message_sent"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window"
+    },
+    "cross_window_docs_record": {
+      "product": "docs",
+      "assertions": [
+        "doc_editor_ready",
+        "doc_body_contains_text"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window"
+    },
+    "cross_window_calendar_create": {
+      "product": "calendar",
+      "assertions": [
+        "calendar_home_ready",
+        "calendar_event_modal_ready"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window"
+    }
+  },
+  "case_seeds": [
+    {
+      "id": "tc_im_send_message",
+      "profile": "im_send_message",
+      "title": "\u53d1\u9001\u6d88\u606f\u5230\u7fa4\u804a",
+      "instruction": "\u6253\u5f00\u6d88\u606f\u4e2d\u7684 bot \u529f\u80fd\u6d4b\u8bd5\u7fa4\u804a\uff0c\u53d1\u9001\u201cHello World\u201d\uff0c\u5e76\u786e\u8ba4\u6d88\u606f\u5df2\u53d1\u9001"
+    },
+    {
+      "id": "tc_im_search_message",
+      "profile": "im_search_message",
+      "title": "\u641c\u7d22\u6d88\u606f\u5e76\u67e5\u770b\u4e0a\u4e0b\u6587",
+      "instruction": "\u5728\u6d88\u606f\u4e2d\u641c\u7d22\u201c\u9879\u76ee\u5468\u62a5\u201d\uff0c\u6253\u5f00\u76f8\u5173\u4f1a\u8bdd\u5e76\u505c\u7559\u5728\u641c\u7d22\u7ed3\u679c\u4e0a\u4e0b\u6587"
+    },
+    {
+      "id": "tc_docs_create_blank_doc",
+      "profile": "docs_create_blank_doc",
+      "title": "\u65b0\u5efa\u7a7a\u767d\u6587\u6863",
+      "instruction": "\u65b0\u5efa\u4e00\u4e2a\u4e91\u6587\u6863\uff0c\u6807\u9898\u4e3a\u201c\u9879\u76ee\u5468\u62a5\u201d\uff0c\u6b63\u6587\u8f93\u5165\u201c2026\u5e74M2\u9879\u76ee\u8fdb\u5c55\u201d"
+    },
+    {
+      "id": "tc_docs_open_existing",
+      "profile": "docs_open_existing",
+      "title": "\u6253\u5f00\u5df2\u6709\u6587\u6863",
+      "instruction": "\u6253\u5f00\u4e91\u6587\u6863\u9996\u9875\uff0c\u627e\u5230\u201c\u9879\u76ee\u5468\u62a5\u201d\u6587\u6863\u5e76\u8fdb\u5165\u7f16\u8f91\u9875\u9762"
+    },
+    {
+      "id": "tc_docs_share_check",
+      "profile": "docs_share_check",
+      "title": "\u6587\u6863\u5206\u4eab\u5f39\u7a97",
+      "instruction": "\u6253\u5f00\u4e91\u6587\u6863\u4e2d\u7684\u201c\u9879\u76ee\u5468\u62a5\u201d\uff0c\u70b9\u51fb\u5206\u4eab\u5e76\u68c0\u67e5\u5206\u4eab\u5f39\u7a97\u662f\u5426\u51fa\u73b0"
+    },
+    {
+      "id": "tc_calendar_create_event",
+      "profile": "calendar_create_event",
+      "title": "\u521b\u5efa\u65e5\u7a0b",
+      "instruction": "\u6253\u5f00\u65e5\u5386\uff0c\u521b\u5efa\u660e\u5929\u4e0b\u5348 2 \u70b9\u7684\u65e5\u7a0b\uff0c\u6807\u9898\u4e3a\u201c\u9879\u76ee\u540c\u6b65\u201d\uff0c\u5e76\u9080\u8bf7\u5f20\u4e09"
+    },
+    {
+      "id": "tc_calendar_view_today",
+      "profile": "calendar_view_today",
+      "title": "\u67e5\u770b\u4eca\u65e5\u65e5\u7a0b",
+      "instruction": "\u6253\u5f00\u65e5\u5386\u4e3b\u9875\uff0c\u67e5\u770b\u4eca\u5929\u7684\u65e5\u7a0b\u5b89\u6392\u5e76\u786e\u8ba4\u65e5\u5386\u9875\u9762\u5df2\u6253\u5f00"
+    },
+    {
+      "id": "tc_base_create_table",
+      "profile": "base_create_table",
+      "title": "\u65b0\u5efa\u591a\u7ef4\u8868\u683c",
+      "instruction": "\u65b0\u5efa\u4e00\u4e2a\u591a\u7ef4\u8868\u683c\uff0c\u6807\u9898\u4e3a\u201c\u6d4b\u8bd5\u7528\u4f8b\u8bb0\u5f55\u8868\u201d"
+    },
+    {
+      "id": "tc_base_open_recent",
+      "profile": "base_open_recent",
+      "title": "\u6253\u5f00\u6700\u8fd1\u7684\u8868\u683c",
+      "instruction": "\u6253\u5f00\u591a\u7ef4\u8868\u683c\u4e3b\u9875\uff0c\u8fdb\u5165\u6700\u8fd1\u7684\u8868\u683c\u5e76\u786e\u8ba4\u7f16\u8f91\u5668\u53ef\u7528"
+    },
+    {
+      "id": "tc_vc_start_meeting",
+      "profile": "vc_start_meeting",
+      "title": "\u53d1\u8d77\u89c6\u9891\u4f1a\u8bae",
+      "instruction": "\u53d1\u8d77\u89c6\u9891\u4f1a\u8bae\u5e76\u9a8c\u8bc1\u8fdb\u5165\u4f1a\u8bae\u4e2d\u9875\u9762"
+    },
+    {
+      "id": "tc_vc_join_meeting",
+      "profile": "vc_join_meeting",
+      "title": "\u52a0\u5165\u89c6\u9891\u4f1a\u8bae",
+      "instruction": "\u52a0\u5165\u4f1a\u8bae ID \u4e3a 123456789 \u7684\u89c6\u9891\u4f1a\u8bae\u5e76\u9a8c\u8bc1\u8fdb\u5165\u4f1a\u8bae"
+    },
+    {
+      "id": "tc_vc_invite_in_meeting",
+      "profile": "vc_invite_in_meeting",
+      "title": "\u4f1a\u8bae\u4e2d\u9080\u8bf7",
+      "instruction": "\u5728\u5f53\u524d\u89c6\u9891\u4f1a\u8bae\u4e2d\u6253\u5f00\u9080\u8bf7\u9762\u677f\u5e76\u786e\u8ba4\u9080\u8bf7\u5165\u53e3\u53ef\u89c1"
+    },
+    {
+      "id": "tc_cross_window_docs_to_im_summary",
+      "profile": "cross_window_im_message",
+      "title": "\u6587\u6863\u6458\u8981\u53d1\u9001\u5230\u7fa4\u804a",
+      "instruction": "\u5728\u4e91\u6587\u6863\u7a97\u53e3\u6253\u5f00\u201c\u9879\u76ee\u5468\u62a5\u201d\uff0c\u9605\u8bfb\u6807\u9898\u548c\u9996\u6bb5\u5185\u5bb9\u540e\uff0c\u5207\u6362\u5230\u98de\u4e66\u6d88\u606f\u7a97\u53e3\uff0c\u5728 bot \u529f\u80fd\u6d4b\u8bd5\u7fa4\u804a\u53d1\u9001\u4e00\u6761\u5305\u542b\u6587\u6863\u6807\u9898\u548c\u6458\u8981\u7684\u6d88\u606f\uff0c\u5e76\u786e\u8ba4\u6d88\u606f\u5df2\u53d1\u9001",
+      "window_scope": "cross_window",
+      "related_products": [
+        "docs",
+        "im"
+      ],
+      "window_surfaces": [
+        "docs_editor_window",
+        "im_chat_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should show Docs editor observed before IM composer",
+        "final report should show IM message send completion",
+        "screenshots should include both document and chat surfaces"
+      ],
+      "note": "Cross-window final verifier only checks the IM completion; Docs observation must be reviewed through screenshots or semantic trace."
+    },
+    {
+      "id": "tc_cross_window_calendar_to_im_notify",
+      "profile": "cross_window_im_message",
+      "title": "\u65e5\u7a0b\u521b\u5efa\u540e\u7fa4\u804a\u901a\u77e5",
+      "instruction": "\u5728\u65e5\u5386\u7a97\u53e3\u521b\u5efa\u4e00\u4e2a\u6807\u9898\u4e3a\u201c\u8de8\u7a97\u53e3\u540c\u6b65\u9a8c\u8bc1\u201d\u7684\u660e\u65e5 10 \u70b9\u65e5\u7a0b\uff0c\u4fdd\u5b58\u540e\u5207\u6362\u5230\u98de\u4e66\u6d88\u606f\u7a97\u53e3\uff0c\u5728 bot \u529f\u80fd\u6d4b\u8bd5\u7fa4\u804a\u53d1\u9001\u201c\u5df2\u521b\u5efa\u8de8\u7a97\u53e3\u540c\u6b65\u9a8c\u8bc1\u65e5\u7a0b\u201d\uff0c\u5e76\u786e\u8ba4\u6d88\u606f\u5df2\u53d1\u9001",
+      "window_scope": "cross_window",
+      "related_products": [
+        "calendar",
+        "im"
+      ],
+      "window_surfaces": [
+        "calendar_window",
+        "im_chat_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should show Calendar event modal or Calendar home before IM composer",
+        "actions log should show a product handoff without any scripted step chain",
+        "final report should show IM message send completion"
+      ],
+      "note": "Calendar event persistence still needs human review from artifacts; final automated assertion focuses on the notification message."
+    },
+    {
+      "id": "tc_cross_window_base_to_docs_record",
+      "profile": "cross_window_docs_record",
+      "title": "\u591a\u7ef4\u8868\u683c\u4fe1\u606f\u8bb0\u5f55\u5230\u6587\u6863",
+      "instruction": "\u5728\u591a\u7ef4\u8868\u683c\u7a97\u53e3\u6253\u5f00\u6700\u8fd1\u7684\u8868\u683c\uff0c\u8bfb\u53d6\u5f53\u524d\u8868\u683c\u540d\u79f0\u6216\u53ef\u89c1\u5b57\u6bb5\u540d\u79f0\uff0c\u7136\u540e\u5207\u6362\u5230\u4e91\u6587\u6863\u7a97\u53e3\uff0c\u65b0\u5efa\u6216\u6253\u5f00\u201c\u8de8\u7a97\u53e3\u8bb0\u5f55\u201d\u6587\u6863\uff0c\u5199\u5165\u4e00\u884c\u5305\u542b\u8868\u683c\u540d\u79f0\u6216\u5b57\u6bb5\u540d\u79f0\u7684\u8bb0\u5f55\uff0c\u5e76\u786e\u8ba4\u6587\u6863\u7f16\u8f91\u5668\u53ef\u7528",
+      "window_scope": "cross_window",
+      "related_products": [
+        "base",
+        "docs"
+      ],
+      "window_surfaces": [
+        "base_table_window",
+        "docs_editor_window"
+      ],
+      "evidence_focus": [
+        "screenshots should include Base table surface and Docs editor surface",
+        "semantic trace should record a Base-to-Docs handoff",
+        "final report should show Docs editor/body verification"
+      ],
+      "note": "Base source observation is reviewed through artifacts; final verifier focuses on Docs editor/body state."
+    },
+    {
+      "id": "tc_cross_window_vc_to_im_meeting_note",
+      "profile": "cross_window_im_message",
+      "title": "\u4f1a\u8bae\u4e2d\u590d\u5236\u4f1a\u8bae\u4fe1\u606f\u5230\u7fa4\u804a",
+      "instruction": "\u5728\u89c6\u9891\u4f1a\u8bae\u7a97\u53e3\u786e\u8ba4\u5f53\u524d\u5904\u4e8e\u4f1a\u8bae\u4e2d\u6216\u9080\u8bf7\u9762\u677f\u53ef\u89c1\uff0c\u8bfb\u53d6\u53ef\u89c1\u4f1a\u8bae\u6807\u9898\u6216\u9080\u8bf7\u4fe1\u606f\uff0c\u7136\u540e\u5207\u6362\u5230\u98de\u4e66\u6d88\u606f\u7a97\u53e3\uff0c\u5728 bot \u529f\u80fd\u6d4b\u8bd5\u7fa4\u804a\u53d1\u9001\u4e00\u6761\u4f1a\u8bae\u63d0\u9192\u6d88\u606f\uff0c\u5e76\u786e\u8ba4\u6d88\u606f\u5df2\u53d1\u9001",
+      "priority": "medium",
+      "window_scope": "cross_window",
+      "related_products": [
+        "vc",
+        "im"
+      ],
+      "window_surfaces": [
+        "vc_meeting_window",
+        "im_chat_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should include VC meeting or invite surface before IM composer",
+        "screenshots should prove the cross-window handoff",
+        "final report should show IM message send completion"
+      ],
+      "note": "This is a VLM cross-window perception probe; VC source evidence is reviewed from screenshots/semantic trace."
+    },
+    {
+      "id": "tc_cross_window_docs_calendar_planning",
+      "profile": "cross_window_calendar_create",
+      "title": "\u4ece\u6587\u6863\u5185\u5bb9\u521b\u5efa\u65e5\u7a0b",
+      "instruction": "\u5728\u4e91\u6587\u6863\u7a97\u53e3\u6253\u5f00\u201c\u9879\u76ee\u5468\u62a5\u201d\uff0c\u6839\u636e\u6587\u6863\u4e2d\u53ef\u89c1\u7684\u4f1a\u8bae\u6216\u8ba1\u5212\u4fe1\u606f\uff0c\u5207\u6362\u5230\u65e5\u5386\u7a97\u53e3\u521b\u5efa\u4e00\u4e2a\u6807\u9898\u5305\u542b\u201c\u9879\u76ee\u5468\u62a5\u201d\u7684\u65e5\u7a0b\uff0c\u5e76\u786e\u8ba4\u65e5\u5386\u521b\u5efa\u65e5\u7a0b\u5f39\u7a97\u6216\u65e5\u5386\u4e3b\u9875\u53ef\u89c1",
+      "window_scope": "cross_window",
+      "related_products": [
+        "docs",
+        "calendar"
+      ],
+      "window_surfaces": [
+        "docs_editor_window",
+        "calendar_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should show Docs content observed before Calendar interaction",
+        "final state should be Calendar home or event modal",
+        "screenshots should include document and calendar surfaces"
+      ],
+      "note": "Intermediate Docs content use is artifact-reviewed; current Calendar verifier checks surface readiness rather than full event persistence."
+    }
+  ]
+}

@@ -32,8 +32,12 @@ class TestCalendarConstraints(unittest.TestCase):
                     self.assertNotIn(token, text)
 
     def test_calendar_instruction_no_longer_compiles_fixed_workflow(self) -> None:
-        with self.assertRaisesRegex(ValueError, "unable to extract chat_name"):
-            parse_instruction("帮我创建一个日历会议")
+        testcase = parse_instruction("帮我创建一个日历会议")
+
+        self.assertEqual(testcase["product"], "calendar")
+        self.assertEqual(testcase["steps"], [])
+        self.assertTrue(testcase["artifacts"]["semantic_guidance_only"])
+        self.assertEqual(testcase["artifacts"]["active_executor"], "feishu_agent")
 
 
 if __name__ == "__main__":

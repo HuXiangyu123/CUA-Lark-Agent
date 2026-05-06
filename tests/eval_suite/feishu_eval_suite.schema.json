@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "feishu_eval_suite.schema.json",
   "title": "Feishu Eval Suite Manifest",
-  "description": "Schema for the read-only test case manifest. No live runtime — used for manual selection and future batch evaluation wiring.",
+  "description": "Schema for the read-only test case manifest. No live runtime controller — used for manual selection, live evidence probes, and future batch evaluation wiring.",
   "type": "object",
   "required": ["test_cases"],
   "properties": {
@@ -34,6 +34,22 @@
         "priority": { "type": "string", "enum": ["high", "medium", "low"] },
         "enabled": { "type": "boolean", "description": "Whether ready for live execution" },
         "verifier_coverage": { "type": "string", "enum": ["full", "partial", "missing"] },
+        "window_scope": { "type": "string", "enum": ["single_window", "cross_window"] },
+        "related_products": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["im", "docs", "calendar", "base", "vc"] },
+          "description": "Products or Feishu surfaces expected to be involved in this task."
+        },
+        "window_surfaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Semantic window/surface labels. These are not locator hints."
+        },
+        "evidence_focus": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Human review cues expected in screenshots, reports, or semantic trace."
+        },
         "note": { "type": "string" }
       }
     }

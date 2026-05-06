@@ -116,6 +116,19 @@ class AssertionVerifier:
                 f"sent message mismatch: expected={expected_text!r}, actual={sent_text!r}",
             )
 
+        if assertion == "im_search_panel_ready":
+            if state.get("page_type") == "chat_search_panel" or product_state.get(
+                "local_search_panel_visible"
+            ):
+                evidence = ["page_type=chat_search_panel"]
+                if product_state.get("local_search_result_list_visible"):
+                    evidence.append("search_result_list_visible=True")
+                return _success(assertion, evidence)
+            return _failure(
+                assertion,
+                f"IM search panel not visible: page_type={state.get('page_type')!r}",
+            )
+
         if assertion == "base_home_ready":
             if state.get("product") == "base" and (
                 state.get("page_type") == "base_home"
@@ -228,6 +241,36 @@ class AssertionVerifier:
                 assertion,
                 f"doc body mismatch: expected={expected_text!r}, actual={actual_body!r}",
             )
+
+        if assertion == "im_search_results_visible":
+            if (
+                state.get("page_type") == "im_chat_search_panel"
+                or product_state.get("local_search_panel_visible")
+                or state.get("search_box_visible")
+            ):
+                evidence = ["search_visible=True"]
+                if product_state.get("visible_conversation_search_results"):
+                    evidence.append(
+                        f"results={product_state['visible_conversation_search_results']}"
+                    )
+                return _success(assertion, evidence)
+            return _failure(
+                assertion,
+                f"IM search not visible: page_type={state.get('page_type')!r}",
+            )
+
+        if assertion == "docs_share_dialog_opened":
+            if product_state.get("share_dialog_visible"):
+                return _success(assertion, ["share_dialog_visible=True"])
+            ocr_lower = ocr_text.lower() if ocr_text else ""
+            if "分享链接" in ocr_lower or (
+                "分享" in ocr_lower and "复制链接" in ocr_lower
+            ):
+                return _success(
+                    assertion,
+                    ["ocr_contains=分享链接", "source=ocr_fallback"],
+                )
+            return _failure(assertion, "Docs share dialog is not visible")
 
         if assertion == "calendar_home_ready":
             if state.get("product") == "calendar" and (

@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from gui_agents.feishu.contracts import FeishuState, PageDescriptor
+from gui_agents.feishu.detectors.anomaly import merge_anomaly_product_state
 from gui_agents.feishu.observation import normalize_observation
 from gui_agents.feishu.pages.registry import get_page_descriptor
 
@@ -62,6 +63,12 @@ def _state_from_metadata(metadata: dict[str, Any]) -> FeishuState:
 
 def _shell_search_state(ocr_text: str) -> FeishuState:
     page_descriptor = get_page_descriptor("feishu_shell_search")
+    product_state = merge_anomaly_product_state(
+        {
+            "search_result_list_visible": "常用" in ocr_text,
+        },
+        ocr_text,
+    )
     return FeishuState(
         page_type=page_descriptor["page_type"] if page_descriptor else "unknown",
         product="feishu",
@@ -71,24 +78,14 @@ def _shell_search_state(ocr_text: str) -> FeishuState:
         search_box_visible=True,
         modal_type=None,
         last_error_banner=None,
-        product_state={
-            "search_result_list_visible": "常用" in ocr_text,
-        },
+        product_state=product_state,
     )
 
 
 def _im_chat_search_panel_state(ocr_text: str) -> FeishuState:
     page_descriptor = get_page_descriptor("im_chat_search_panel")
-    return FeishuState(
-        page_type=page_descriptor["page_type"] if page_descriptor else "unknown",
-        product="im",
-        chat_name=None,
-        message_input_visible=False,
-        send_button_visible=False,
-        search_box_visible=True,
-        modal_type=None,
-        last_error_banner=None,
-        product_state={
+    product_state = merge_anomaly_product_state(
+        {
             "local_search_panel_visible": True,
             "local_search_filters_visible": _contains_any(
                 ocr_text, CHAT_SEARCH_FILTER_KEYWORDS
@@ -99,6 +96,18 @@ def _im_chat_search_panel_state(ocr_text: str) -> FeishuState:
             "local_search_result_list_visible": False,
             "visible_conversation_search_results": [],
         },
+        ocr_text,
+    )
+    return FeishuState(
+        page_type=page_descriptor["page_type"] if page_descriptor else "unknown",
+        product="im",
+        chat_name=None,
+        message_input_visible=False,
+        send_button_visible=False,
+        search_box_visible=True,
+        modal_type=None,
+        last_error_banner=None,
+        product_state=product_state,
     )
 
 
@@ -114,7 +123,7 @@ def _im_chat_state(
         search_box_visible=False,
         modal_type=None,
         last_error_banner=None,
-        product_state={},
+        product_state=merge_anomaly_product_state({}, ocr_text),
     )
 
 

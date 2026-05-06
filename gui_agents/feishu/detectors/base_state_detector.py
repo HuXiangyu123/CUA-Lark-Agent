@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from gui_agents.feishu.contracts import FeishuState
+from gui_agents.feishu.detectors.anomaly import merge_anomaly_product_state
 from gui_agents.feishu.observation import normalize_observation
 from gui_agents.feishu.pages.registry import get_page_descriptor
 
@@ -87,6 +88,7 @@ def _fallback_state(observation: dict[str, Any]) -> FeishuState:
         }
     elif page_id:
         product_state = {"surface_class": "secondary"}
+    product_state = merge_anomaly_product_state(product_state, ocr_text)
 
     return FeishuState(
         page_type=descriptor["page_type"] if descriptor else "unknown",

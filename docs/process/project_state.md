@@ -75,8 +75,8 @@ This section checks the current repository state against `docs/项目需求.md`.
      `ReportBuilder`, and `ArtifactManager`.
    - `summary.json`, `report.md`, `actions.jsonl`, and screenshot persistence
      are in place.
-   - Batch-level success-rate aggregation and a regression dashboard are not yet
-     implemented.
+   - Batch-level success-rate aggregation and an offline interactive evaluation
+     dashboard are implemented; trend comparison is still missing.
 
 ### Milestone Snapshot
 
@@ -86,7 +86,7 @@ This section checks the current repository state against `docs/项目需求.md`.
 | `M1` | 5 single-step actions | Mostly done at runtime/tool level |
 | `M2` | 1 product, 3 end-to-end flows | Partially done; IM main path exists, but 3 stable E2E flows are not yet complete |
 | `M3` | 2+ products stable runnable | Partially done; 5 products have semantic/domain coverage, but stable live runnable coverage still lags |
-| `M4` | structured evaluation system | Partially done; per-run artifact layer exists, batch evaluation not yet done |
+| `M4` | structured evaluation system | Partially done; per-run artifacts, batch aggregation, and offline dashboard exist; regression runner and trend comparison are still missing |
 | `M5` | 1-2 advanced features | Partially done; exception handling and self-heal primitives exist, others remain open |
 
 ## Product Coverage
@@ -194,8 +194,12 @@ Missing:
 - `ArtifactManager` stable artifact persistence
 - `ReportBuilder` for `summary.json` and `report.md`
 - `EvaluationAggregator` batch aggregation from `summary.json` artifacts
-- `tests/eval_suite/feishu_eval_suite.json` read-only test case manifest (12 cases, 5 products)
+- `tests/eval_suite/feishu_eval_suite.json` read-only test case manifest (17 cases, 5 products; includes 5 cross-window candidates)
 - `scripts/build_feishu_eval_report.py` CLI wrapper for batch evaluation
+- `evaluation_dashboard.html` offline interactive evaluation dashboard
+- `dashboard_server.py` localhost read-only report portal with launcher entry
+- Live E2E evidence pack from existing run artifacts:
+  `live_e2e_evidence.json` and `live_e2e_evidence.md`
 
 ### Output Currently Available
 
@@ -210,12 +214,17 @@ Batch outputs under `artifacts/evaluation/`:
 
 - `evaluation_summary.json`
 - `evaluation_report.md`
+- `evaluation_dashboard.html`
+- `live_e2e_evidence.json`
+- `live_e2e_evidence.md`
 
 ### Still Missing
 
 - ~~aggregate success-rate reporting across runs~~ → done: `evaluation_aggregator.py` + `build_feishu_eval_report.py`
+- ~~dashboard / visualization layer~~ -> done: `evaluation_dashboard.html`
+- ~~Live E2E evidence pack generation~~ -> done: artifact completeness and
+  assertion-pass evidence from `artifacts/test_runs/*`
 - regression runner over a test suite (manifest created, batch runner deferred)
-- dashboard / visualization layer
 - trend comparison between runs
 
 ## Advanced Feature Status
@@ -259,12 +268,22 @@ Gap:
 
 ### 3. Cross-product linked testing
 
-Status: not implemented (deferred).
+Status: partially implemented at testcase/evidence-probe level.
 
 Current state:
 
-- no active IM -> Calendar -> IM linked runtime flow
-- deferred: depends on stable live product paths not yet validated
+- five cross-window eval candidates are now listed in
+  `tests/eval_suite/feishu_eval_suite.json`
+- covered handoffs: Docs -> IM, Calendar -> IM, Base -> Docs, VC -> IM,
+  Docs -> Calendar
+- these cases are semantic manifest entries only; no deterministic runtime
+  controller or ordered step sequence is introduced
+
+Gap:
+
+- no active linked runtime runner
+- live pass evidence still depends on real Feishu desktop runs and artifact
+  review through `live_e2e_evidence.*`
 
 ### 4. Testcase auto generation
 
@@ -330,7 +349,7 @@ Recommended next order:
 4. 多轮对话编排 (per-turn state/guidance block)
 5. 录制回放语义轨迹版 (semantic_trace.json + replay_draft.md)
 6. Calendar verifier branches (only major gap remaining in product coverage)
-7. Batch evaluation and regression runner (M4)
+7. Regression runner and trend comparison (M4)
 
 ## Historical Drift Notes
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from gui_agents.feishu.contracts import FeishuState
+from gui_agents.feishu.detectors.anomaly import merge_anomaly_product_state
 from gui_agents.feishu.observation import normalize_observation
 from gui_agents.feishu.pages.registry import get_page_descriptor
 
@@ -50,6 +51,7 @@ def _fallback_state(observation: dict[str, Any]) -> FeishuState:
             "calendar_home_visible": True,
             "create_event_button_visible": "创建日程" in ocr_text,
         }
+    product_state = merge_anomaly_product_state(product_state, ocr_text)
 
     descriptor = get_page_descriptor(page_id) if page_id else None
     return FeishuState(

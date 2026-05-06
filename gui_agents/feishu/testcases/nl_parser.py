@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from gui_agents.feishu.contracts import TestCase
 from gui_agents.feishu.testcases.scenario_schema import (
@@ -20,10 +21,7 @@ SEMANTIC_TESTCASE_ARTIFACTS = {
 
 QUOTED_TEXT_PATTERN = re.compile(r"""["'“”‘’]([^"'“”‘’]+)["'“”‘’]""")
 UNSUPPORTED_INTENT_KEYWORDS = (
-    "表情",
-    "emoji",
     "随机",
-    "右侧",
     "表情图标",
 )
 
@@ -60,6 +58,8 @@ def _detect_product(instruction: str) -> str:
         return "base"
     if any(keyword in instruction for keyword in ("云文档", "文档", "飞书云文档")):
         return "docs"
+    if any(keyword in instruction for keyword in ("日历", "日程")):
+        return "calendar"
     return "im"
 
 
@@ -225,6 +225,71 @@ def _parse_base_instruction(instruction: str, quoted_texts: list[str]) -> TestCa
     )
 
 
+def _extract_calendar_title(instruction: str, quoted_texts: list[str]) -> str | None:
+    if len(quoted_texts) >= 1:
+        for pattern in (
+            r"""标题[为是]?\s*[:：]?\s*["'“”]([^"'“”]+)["'“”]""",
+            r"标题[为是]?\s*[:：]?\s*([^\s，,。；;]+)",
+        ):
+            match = re.search(pattern, instruction)
+            if match:
+                return match.group(1).strip().strip("\"'“”")
+        return quoted_texts[-1]
+    for pattern in (
+        r"标题[为是]?\s*[:：]?\s*([^\s，,。；;]+)",
+        r"名称为\s*[:：]?\s*([^\s，,。；;]+)",
+    ):
+        match = re.search(pattern, instruction)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _extract_calendar_attendee(instruction: str) -> str | None:
+    for pattern in (
+        r"邀请\s*([^\s，,。；;]+)",
+        r"添加参会人\s*([^\s，,。；;]+)",
+    ):
+        match = re.search(pattern, instruction)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _parse_calendar_instruction(instruction: str, quoted_texts: list[str]) -> TestCase:
+    if any(keyword in instruction for keyword in ("创建", "新建", "添加")):
+        intent = "create_event"
+        assertions: list[str] = ["calendar_home_ready", "calendar_event_modal_ready"]
+    elif any(
+        keyword in instruction for keyword in ("查看", "查看今日", "今天", "今日日程")
+    ):
+        intent = "view_today"
+        assertions = ["calendar_home_ready"]
+    else:
+        intent = "calendar_semantic_task"
+        assertions = ["calendar_home_ready"]
+
+    event_title = _extract_calendar_title(instruction, quoted_texts)
+    attendee = _extract_calendar_attendee(instruction)
+
+    params: dict[str, Any] = {
+        "instruction": instruction,
+        "calendar_intent": intent,
+    }
+    if event_title:
+        params["event_title"] = event_title
+    if attendee:
+        params["attendee"] = attendee
+
+    return build_guidance_testcase(
+        product="calendar",
+        title=f"Calendar 语义指导任务 {intent}",
+        intent=intent,
+        params=params,
+        assertions=assertions,
+    )
+
+
 def _parse_vc_instruction(instruction: str, quoted_texts: list[str]) -> TestCase:
     del quoted_texts
     if any(
@@ -264,6 +329,28 @@ def parse_instruction(instruction: str) -> TestCase:
         return _parse_vc_instruction(normalized, quoted_texts)
     if product == "docs":
         return _parse_docs_instruction(normalized, quoted_texts)
+    if product == "calendar":
+        return _parse_calendar_instruction(normalized, quoted_texts)
+
+    # IM product: detect search vs send_message intent
+    if product == "im" and any(
+        kw in normalized for kw in ("搜索", "查找", "搜索消息", "搜索会话")
+    ):
+        if quoted_texts:
+            search_term = quoted_texts[0]
+        else:
+            search_term = normalized.split("搜索")[-1].strip("“” 消息内容记录")
+        chat_name = _extract_chat_name(normalized, quoted_texts)
+        params: dict[str, Any] = {"instruction": normalized, "search_term": search_term}
+        if chat_name:
+            params["chat_name"] = chat_name
+        return build_guidance_testcase(
+            product="im",
+            title=f"IM 搜索任务 {search_term[:20]}",
+            intent="search_messages",
+            params=params,
+            assertions=["im_search_panel_ready"],
+        )
 
     chat_name = _extract_chat_name(normalized, quoted_texts)
     message_text = _extract_message_text(normalized, quoted_texts)

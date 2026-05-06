@@ -22,6 +22,8 @@ KNOWN_ASSERTIONS = {
     "base_new_menu_opened",
     "base_template_gallery_ready",
     "base_editor_ready",
+    "im_search_panel_ready",
+    "docs_share_dialog_opened",
     "calendar_home_ready",
     "calendar_event_modal_ready",
     "vc_home_ready",
@@ -36,6 +38,22 @@ KNOWN_ASSERTIONS = {
 VALID_PRODUCTS = {"im", "docs", "calendar", "base", "vc"}
 VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_COVERAGE = {"full", "partial", "missing"}
+VALID_WINDOW_SCOPE = {"single_window", "cross_window"}
+FORBIDDEN_SEMANTIC_KEYS = {
+    "relative_bounds",
+    "bbox",
+    "bounding_box",
+    "coordinate",
+    "coordinates",
+    "confidence",
+    "score",
+    "resolution",
+    "image_width",
+    "image_height",
+    "steps",
+    "ordered_steps",
+    "action_sequence",
+}
 
 
 class EvalSuiteManifestTest(unittest.TestCase):
@@ -130,3 +148,53 @@ class EvalSuiteManifestTest(unittest.TestCase):
                         ("full", "partial"),
                         "enabled cases must have verifier coverage",
                     )
+
+    def test_window_scope_if_present(self):
+        for tc in self.data["test_cases"]:
+            scope = tc.get("window_scope")
+            if scope is not None:
+                with self.subTest(tc_id=tc["id"]):
+                    self.assertIn(scope, VALID_WINDOW_SCOPE)
+
+    def test_cross_window_cases_are_explicit_and_reviewable(self):
+        cross_window_cases = [
+            tc
+            for tc in self.data["test_cases"]
+            if tc.get("window_scope") == "cross_window"
+        ]
+
+        self.assertGreaterEqual(len(cross_window_cases), 4)
+        for tc in cross_window_cases:
+            with self.subTest(tc_id=tc["id"]):
+                related_products = tc.get("related_products", [])
+                self.assertGreaterEqual(len(set(related_products)), 2)
+                self.assertIn(tc["product"], related_products)
+                self.assertTrue(tc.get("window_surfaces"))
+                self.assertTrue(tc.get("evidence_focus"))
+                self.assertTrue(tc.get("note"))
+                self.assertEqual(tc.get("verifier_coverage"), "partial")
+
+    def test_cross_window_cases_are_semantic_only(self):
+        cross_window_cases = [
+            tc
+            for tc in self.data["test_cases"]
+            if tc.get("window_scope") == "cross_window"
+        ]
+        for tc in cross_window_cases:
+            with self.subTest(tc_id=tc["id"]):
+                self.assertFalse(
+                    FORBIDDEN_SEMANTIC_KEYS.intersection(tc.keys()),
+                    "cross-window cases must not define coordinate or step-chain fields",
+                )
+                serialized = json.dumps(tc, ensure_ascii=False).lower()
+                for forbidden in (
+                    "relative_bounds",
+                    "bbox",
+                    "confidence",
+                    "image_width",
+                    "image_height",
+                    "ordered step",
+                    "ordered_steps",
+                    "action_sequence",
+                ):
+                    self.assertNotIn(forbidden, serialized)

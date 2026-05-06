@@ -31,6 +31,9 @@ def main() -> int:
     paths = write_evaluation_report(args.artifact_root, args.output_dir)
     print(f"FEISHU_EVALUATION_SUMMARY: {paths['evaluation_summary']}")
     print(f"FEISHU_EVALUATION_REPORT: {paths['evaluation_report']}")
+    print(f"FEISHU_EVALUATION_DASHBOARD: {paths['evaluation_dashboard']}")
+    print(f"FEISHU_LIVE_E2E_EVIDENCE: {paths['live_e2e_evidence']}")
+    print(f"FEISHU_LIVE_E2E_REPORT: {paths['live_e2e_report']}")
     return 0
 
 

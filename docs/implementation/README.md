@@ -31,8 +31,21 @@ These records describe the current agentic route or current guardrails:
 | `feishu_agent_migration_remove_workflows_2026-05-06.md` | Cutover record from deterministic Feishu workflows to `feishu_agent`. |
 | `feishu_agent_docs_router_and_parser_contract_2026-05-06.md` | Docs parser/router contract in the agentic route. |
 | `feishu_batch_evaluation_2026-05-06.md` | Batch evaluation aggregation and report CLI. |
+| `feishu_evaluation_dashboard_2026-05-06.md` | Offline interactive dashboard for aggregate evaluation artifacts. |
+| `evaluation_dashboard_feishu_blue_cn_2026-05-06.md` | Chinese blue-white Feishu-styled evaluation dashboard UI refresh. |
+| `evaluation_dashboard_unified_process_quality_2026-05-06.md` | Unified `/dashboard` route, report links, and process-quality metrics for evaluation review. |
+| `dashboard_report_visual_iteration_2026-05-06.md` | Per-run report visual refresh, clickable dashboard rows, and compact run/task labels. |
+| `report_metrics_defaults_and_icon_report_2026-05-06.md` | Stable process-quality metric defaults, runtime reflection capture, and icon-led per-run report page. |
+| `runtime_incremental_artifacts_and_abort_2026-05-06.md` | Incremental run artifacts, runtime stdout log, finalize error files, and launcher manual-abort evidence. |
+| `live_e2e_evidence_pack_2026-05-06.md` | Live E2E artifact completeness and acceptance evidence pack. |
+| `cross_window_eval_cases_2026-05-06.md` | Cross-window eval suite cases for VLM-driven product handoffs. |
+| `launcher_semantic_replay_viewer_2026-05-06.md` | Launcher tab for viewing semantic replay artifacts without executing replay. |
+| `launcher_dashboard_server_2026-05-06.md` | Launcher button and localhost report portal for converted evaluation artifacts. |
+| `launcher_default_execution_mode_feishu_agent_2026-05-06.md` | Launcher default execution mode changed to `feishu_agent` while preserving manual `classic_s3` selection. |
 | `advanced_runtime_context_field_freeze_2026-05-06.md` | Optional advanced-feature fields on `RuntimeContext`. |
 | `advanced_features_preliminary_plan.md` | Low-risk advanced feature plan. |
+| `anomaly_handling_2026-05-06.md` | Semantic exception handling through anomaly flags, recovery guidance, and runtime events. |
+| `anomaly_report_evidence_2026-05-06.md` | Carries anomaly runtime events into reviewable reports, traces, and replay drafts. |
 | `vc_agentic_tools_runtime_stabilization_2026-05-06.md` | VC helper tools and runtime stabilization. |
 | `vc_m4_runtime_verification_integration_2026-05-06.md` | VC final verification integration. |
 | `s3_feishu_agent_track_d_artifacts_2026-05-06.md` | Runtime artifact recording through the agentic route. |

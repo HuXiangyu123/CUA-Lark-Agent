@@ -1,15 +1,25 @@
 {
   "$schema": "feishu_eval_suite.schema.json",
-  "description": "Feishu eval suite manifest — read-only test case listing for manual selection and future batch evaluation. No live runtime execution.",
-  "generated_at": "2026-05-06T15:00:00+08:00",
-  "products": ["im", "docs", "calendar", "base", "vc"],
+  "description": "Feishu eval suite manifest — read-only test case listing for manual selection, live evidence probes, and future batch evaluation. No live runtime controller.",
+  "generated_at": "2026-05-06T16:15:00+08:00",
+  "products": [
+    "im",
+    "docs",
+    "calendar",
+    "base",
+    "vc"
+  ],
   "test_cases": [
     {
       "id": "tc_im_send_message",
       "product": "im",
       "title": "发送消息到群聊",
       "instruction": "打开消息中的 bot 功能测试群聊，发送“Hello World”，并确认消息已发送",
-      "assertions": ["chat_title_matched", "message_input_contains_text", "message_sent"],
+      "assertions": [
+        "chat_title_matched",
+        "message_input_contains_text",
+        "message_sent"
+      ],
       "priority": "high",
       "enabled": true,
       "verifier_coverage": "full"
@@ -19,17 +29,25 @@
       "product": "im",
       "title": "搜索消息并查看上下文",
       "instruction": "在消息中搜索“项目周报”，打开相关会话并停留在搜索结果上下文",
-      "assertions": ["chat_title_matched"],
+      "assertions": [
+        "chat_title_matched",
+        "im_search_panel_ready"
+      ],
       "priority": "medium",
       "enabled": true,
-      "verifier_coverage": "partial"
+      "verifier_coverage": "full"
     },
     {
       "id": "tc_docs_create_blank_doc",
       "product": "docs",
       "title": "新建空白文档",
       "instruction": "新建一个云文档，标题为“项目周报”，正文输入“2026年M2项目进展”",
-      "assertions": ["docs_new_menu_opened", "doc_editor_ready", "doc_title_contains_text", "doc_body_contains_text"],
+      "assertions": [
+        "docs_new_menu_opened",
+        "doc_editor_ready",
+        "doc_title_contains_text",
+        "doc_body_contains_text"
+      ],
       "priority": "high",
       "enabled": true,
       "verifier_coverage": "full"
@@ -39,7 +57,10 @@
       "product": "docs",
       "title": "打开已有文档",
       "instruction": "打开云文档首页，找到“项目周报”文档并进入编辑页面",
-      "assertions": ["docs_home_ready", "doc_editor_ready"],
+      "assertions": [
+        "docs_home_ready",
+        "doc_editor_ready"
+      ],
       "priority": "medium",
       "enabled": true,
       "verifier_coverage": "full"
@@ -49,17 +70,22 @@
       "product": "docs",
       "title": "文档分享弹窗",
       "instruction": "打开云文档中的“项目周报”，点击分享并检查分享弹窗是否出现",
-      "assertions": ["doc_editor_ready"],
+      "assertions": [
+        "docs_share_dialog_opened"
+      ],
       "priority": "medium",
       "enabled": true,
-      "verifier_coverage": "partial"
+      "verifier_coverage": "full"
     },
     {
       "id": "tc_calendar_create_event",
       "product": "calendar",
       "title": "创建日程",
       "instruction": "打开日历，创建明天下午 2 点的日程，标题为“项目同步”，并邀请张三",
-      "assertions": ["calendar_home_ready", "calendar_event_modal_ready"],
+      "assertions": [
+        "calendar_home_ready",
+        "calendar_event_modal_ready"
+      ],
       "priority": "high",
       "enabled": true,
       "verifier_coverage": "full"
@@ -69,7 +95,9 @@
       "product": "calendar",
       "title": "查看今日日程",
       "instruction": "打开日历主页，查看今天的日程安排并确认日历页面已打开",
-      "assertions": ["calendar_home_ready"],
+      "assertions": [
+        "calendar_home_ready"
+      ],
       "priority": "medium",
       "enabled": true,
       "verifier_coverage": "full"
@@ -79,7 +107,10 @@
       "product": "base",
       "title": "新建多维表格",
       "instruction": "新建一个多维表格，标题为“测试用例记录表”",
-      "assertions": ["base_new_menu_opened", "base_editor_ready"],
+      "assertions": [
+        "base_new_menu_opened",
+        "base_editor_ready"
+      ],
       "priority": "high",
       "enabled": true,
       "verifier_coverage": "full"
@@ -89,7 +120,10 @@
       "product": "base",
       "title": "打开最近的表格",
       "instruction": "打开多维表格主页，进入最近的表格并确认编辑器可用",
-      "assertions": ["base_home_ready", "base_editor_ready"],
+      "assertions": [
+        "base_home_ready",
+        "base_editor_ready"
+      ],
       "priority": "medium",
       "enabled": true,
       "verifier_coverage": "full"
@@ -99,7 +133,11 @@
       "product": "vc",
       "title": "发起视频会议",
       "instruction": "发起视频会议并验证进入会议中页面",
-      "assertions": ["vc_home_ready", "vc_start_preview_ready", "vc_meeting_active"],
+      "assertions": [
+        "vc_home_ready",
+        "vc_start_preview_ready",
+        "vc_meeting_active"
+      ],
       "priority": "high",
       "enabled": true,
       "verifier_coverage": "full"
@@ -109,7 +147,11 @@
       "product": "vc",
       "title": "加入视频会议",
       "instruction": "加入会议 ID 为 123456789 的视频会议并验证进入会议",
-      "assertions": ["vc_join_preview_ready", "vc_meeting_id_entered", "vc_joined"],
+      "assertions": [
+        "vc_join_preview_ready",
+        "vc_meeting_id_entered",
+        "vc_joined"
+      ],
       "priority": "high",
       "enabled": true,
       "verifier_coverage": "full"
@@ -119,10 +161,150 @@
       "product": "vc",
       "title": "会议中邀请",
       "instruction": "在当前视频会议中打开邀请面板并确认邀请入口可见",
-      "assertions": ["vc_meeting_active", "vc_invite_dialog_opened"],
+      "assertions": [
+        "vc_meeting_active",
+        "vc_invite_dialog_opened"
+      ],
       "priority": "medium",
       "enabled": true,
       "verifier_coverage": "full"
+    },
+    {
+      "id": "tc_cross_window_docs_to_im_summary",
+      "product": "im",
+      "title": "文档摘要发送到群聊",
+      "instruction": "在云文档窗口打开“项目周报”，阅读标题和首段内容后，切换到飞书消息窗口，在 bot 功能测试群聊发送一条包含文档标题和摘要的消息，并确认消息已发送",
+      "assertions": [
+        "message_sent"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window",
+      "related_products": [
+        "docs",
+        "im"
+      ],
+      "window_surfaces": [
+        "docs_editor_window",
+        "im_chat_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should show Docs editor observed before IM composer",
+        "final report should show IM message send completion",
+        "screenshots should include both document and chat surfaces"
+      ],
+      "note": "Cross-window final verifier only checks the IM completion; Docs observation must be reviewed through screenshots or semantic trace."
+    },
+    {
+      "id": "tc_cross_window_calendar_to_im_notify",
+      "product": "im",
+      "title": "日程创建后群聊通知",
+      "instruction": "在日历窗口创建一个标题为“跨窗口同步验证”的明日 10 点日程，保存后切换到飞书消息窗口，在 bot 功能测试群聊发送“已创建跨窗口同步验证日程”，并确认消息已发送",
+      "assertions": [
+        "message_sent"
+      ],
+      "priority": "high",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window",
+      "related_products": [
+        "calendar",
+        "im"
+      ],
+      "window_surfaces": [
+        "calendar_window",
+        "im_chat_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should show Calendar event modal or Calendar home before IM composer",
+        "actions log should show a product handoff without any scripted step chain",
+        "final report should show IM message send completion"
+      ],
+      "note": "Calendar event persistence still needs human review from artifacts; final automated assertion focuses on the notification message."
+    },
+    {
+      "id": "tc_cross_window_base_to_docs_record",
+      "product": "docs",
+      "title": "多维表格信息记录到文档",
+      "instruction": "在多维表格窗口打开最近的表格，读取当前表格名称或可见字段名称，然后切换到云文档窗口，新建或打开“跨窗口记录”文档，写入一行包含表格名称或字段名称的记录，并确认文档编辑器可用",
+      "assertions": [
+        "doc_editor_ready",
+        "doc_body_contains_text"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window",
+      "related_products": [
+        "base",
+        "docs"
+      ],
+      "window_surfaces": [
+        "base_table_window",
+        "docs_editor_window"
+      ],
+      "evidence_focus": [
+        "screenshots should include Base table surface and Docs editor surface",
+        "semantic trace should record a Base-to-Docs handoff",
+        "final report should show Docs editor/body verification"
+      ],
+      "note": "Base source observation is reviewed through artifacts; final verifier focuses on Docs editor/body state."
+    },
+    {
+      "id": "tc_cross_window_vc_to_im_meeting_note",
+      "product": "im",
+      "title": "会议中复制会议信息到群聊",
+      "instruction": "在视频会议窗口确认当前处于会议中或邀请面板可见，读取可见会议标题或邀请信息，然后切换到飞书消息窗口，在 bot 功能测试群聊发送一条会议提醒消息，并确认消息已发送",
+      "assertions": [
+        "message_sent"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window",
+      "related_products": [
+        "vc",
+        "im"
+      ],
+      "window_surfaces": [
+        "vc_meeting_window",
+        "im_chat_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should include VC meeting or invite surface before IM composer",
+        "screenshots should prove the cross-window handoff",
+        "final report should show IM message send completion"
+      ],
+      "note": "This is a VLM cross-window perception probe; VC source evidence is reviewed from screenshots/semantic trace."
+    },
+    {
+      "id": "tc_cross_window_docs_calendar_planning",
+      "product": "calendar",
+      "title": "从文档内容创建日程",
+      "instruction": "在云文档窗口打开“项目周报”，根据文档中可见的会议或计划信息，切换到日历窗口创建一个标题包含“项目周报”的日程，并确认日历创建日程弹窗或日历主页可见",
+      "assertions": [
+        "calendar_home_ready",
+        "calendar_event_modal_ready"
+      ],
+      "priority": "medium",
+      "enabled": true,
+      "verifier_coverage": "partial",
+      "window_scope": "cross_window",
+      "related_products": [
+        "docs",
+        "calendar"
+      ],
+      "window_surfaces": [
+        "docs_editor_window",
+        "calendar_window"
+      ],
+      "evidence_focus": [
+        "semantic trace should show Docs content observed before Calendar interaction",
+        "final state should be Calendar home or event modal",
+        "screenshots should include document and calendar surfaces"
+      ],
+      "note": "Intermediate Docs content use is artifact-reviewed; current Calendar verifier checks surface readiness rather than full event persistence."
     }
   ]
 }

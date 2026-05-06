@@ -286,6 +286,32 @@ class TestFeishuToolRouter(unittest.TestCase):
         self.assertEqual(state["modal_type"], "vc_invite_popover")
         self.assertIn("feishu_vc_click_invite_entry", recommendation.preferred_tools)
 
+    def test_anomaly_guidance_takes_recovery_focus_without_fixed_workflow(self) -> None:
+        observation = {"ocr_text": "飞书云文档 权限不足 申请权限"}
+        state = detect_docs_state(observation)
+
+        recommendation = route_feishu_tools(
+            "打开云文档并创建项目周报",
+            observation,
+            state=state,
+        )
+        guidance = build_feishu_tool_guidance(
+            "打开云文档并创建项目周报",
+            observation,
+            state=state,
+        )
+
+        self.assertEqual(
+            recommendation.next_step_focus, "request_permission_or_report_blocker"
+        )
+        self.assertIn("wait", recommendation.preferred_tools)
+        self.assertIn("click", recommendation.enabled_tools)
+        self.assertIn("permission_denied_visible", recommendation.state_summary)
+        self.assertIn("recovery_hint=request_permission", recommendation.state_summary)
+        self.assertIn("Anomaly detected", guidance)
+        self.assertIn("Report the permission blocker", guidance)
+        self.assertNotIn("WorkflowPlan", guidance)
+
 
 if __name__ == "__main__":
     unittest.main()
