@@ -96,6 +96,30 @@ class TestNLParser(unittest.TestCase):
         self.assertEqual(testcase["steps"], [])
         self.assertEqual(testcase["artifacts"]["params"]["title_hint"], "销售跟进表")
 
+    def test_calendar_create_event_parses_as_guidance_testcase(self) -> None:
+        testcase = parse_instruction(
+            "打开日历，创建明天下午 2 点的日程，标题为“项目同步”，并邀请张三"
+        )
+
+        self.assertEqual(testcase["product"], "calendar")
+        self.assertEqual(testcase["steps"], [])
+        self.assertTrue(testcase["artifacts"]["semantic_guidance_only"])
+        self.assertEqual(testcase["artifacts"]["intent"], "create_event")
+        self.assertIn("calendar_home_ready", testcase["assertions"])
+        self.assertIn("calendar_event_modal_ready", testcase["assertions"])
+        self.assertEqual(testcase["artifacts"]["params"]["event_title"], "项目同步")
+        self.assertEqual(testcase["artifacts"]["params"]["attendee"], "张三")
+
+    def test_calendar_view_today_parses_as_guidance_testcase(self) -> None:
+        testcase = parse_instruction(
+            "打开日历主页，查看今天的日程安排并确认日历页面已打开"
+        )
+
+        self.assertEqual(testcase["product"], "calendar")
+        self.assertEqual(testcase["steps"], [])
+        self.assertEqual(testcase["artifacts"]["intent"], "view_today")
+        self.assertIn("calendar_home_ready", testcase["assertions"])
+
 
 if __name__ == "__main__":
     unittest.main()

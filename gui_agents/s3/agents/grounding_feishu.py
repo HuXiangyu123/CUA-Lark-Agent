@@ -33,6 +33,101 @@ from gui_agents.s3.agents._feishu_exec import (
 from gui_agents.s3.utils.common_utils import call_llm_safe
 
 
+def _build_feishu_clipboard_paste_code(
+    text: str,
+    *,
+    overwrite: bool = False,
+    enter: bool = False,
+    call_guard: str | None = None,
+) -> str:
+    """Generate Windows clipboard paste code for Unicode Feishu text input."""
+
+    log_path = str(REPO_ROOT / LOG_DIR)
+    call_line = (
+        "_feishu_paste_text("
+        f"_FEISHU_PASTE_TEXT, _overwrite={overwrite!r}, _enter={enter!r}"
+        ")\n"
+    )
+    if call_guard:
+        call_block = f"if {call_guard}:\n    {call_line}"
+    else:
+        call_block = call_line
+
+    return f"""
+import ctypes
+import pathlib
+import time
+
+try:
+    import pyperclip as _feishu_clipboard
+except Exception:
+    _feishu_clipboard = None
+
+_FEISHU_PASTE_TEXT = {text!r}
+_FEISHU_LOG_PATH = pathlib.Path({log_path!r}) / "execution-trace.log"
+
+def _feishu_set_clipboard_text(_text):
+    if _feishu_clipboard is not None:
+        _feishu_clipboard.copy(_text)
+        time.sleep(0.12)
+        try:
+            return _feishu_clipboard.paste() == _text
+        except Exception:
+            return True
+    import tkinter as _tk
+    _root = _tk.Tk()
+    _root.withdraw()
+    _root.clipboard_clear()
+    _root.clipboard_append(_text)
+    _root.update()
+    _root.destroy()
+    time.sleep(0.12)
+    return True
+
+def _feishu_key_down(_vk):
+    ctypes.windll.user32.keybd_event(_vk, 0, 0, 0)
+
+def _feishu_key_up(_vk):
+    ctypes.windll.user32.keybd_event(_vk, 0, 0x0002, 0)
+
+def _feishu_tap_key(_vk):
+    _feishu_key_down(_vk)
+    time.sleep(0.03)
+    _feishu_key_up(_vk)
+    time.sleep(0.05)
+
+def _feishu_ctrl_combo(_vk):
+    _feishu_key_down(0x11)
+    time.sleep(0.02)
+    _feishu_key_down(_vk)
+    time.sleep(0.05)
+    _feishu_key_up(_vk)
+    _feishu_key_up(0x11)
+    time.sleep(0.12)
+
+def _feishu_paste_text(_text, _overwrite=False, _enter=False):
+    _clipboard_ok = _feishu_set_clipboard_text(_text)
+    if _overwrite:
+        _feishu_ctrl_combo(0x41)  # A
+        _feishu_tap_key(0x08)  # Backspace
+    _feishu_ctrl_combo(0x56)  # V
+    if _enter:
+        _feishu_tap_key(0x0D)  # Enter
+    try:
+        _FEISHU_LOG_PATH.parent.mkdir(exist_ok=True)
+        with open(_FEISHU_LOG_PATH, "a", encoding="utf-8") as _tf:
+            _tf.write(
+                "FEISHU_TYPED_UNICODE: "
+                + repr({{"text": _text, "clipboard_ok": _clipboard_ok, "overwrite": _overwrite, "enter": _enter}})
+                + "\\n"
+            )
+    except Exception:
+        pass
+
+{call_block}
+"""
+
+
 class WindowsFeishuACI(OSWorldACI):
     """OSWorldACI extended for Windows multi-monitor + Feishu/Lark automation."""
 
@@ -523,22 +618,14 @@ class WindowsFeishuACI(OSWorldACI):
             focus_first:bool, whether to click the message-input region first (default True; set False when composer is already focused)
         """
         focus_code = self.feishu_click_message_input() if focus_first else ""
-        overwrite_code = (
-            "pyautogui.hotkey('ctrl', 'a'); pyautogui.press('backspace');\n"
-            if overwrite
-            else ""
-        )
-        enter_code = "pyautogui.press('enter')\n" if enter else ""
         return (
             "import pyautogui\n"
-            "import pyperclip\n"
             + focus_code
-            + "pyperclip.copy("
-            + repr(text)
-            + ")\n"
-            + overwrite_code
-            + "pyautogui.hotkey('ctrl', 'v')\n"
-            + enter_code
+            + _build_feishu_clipboard_paste_code(
+                text,
+                overwrite=overwrite,
+                enter=enter,
+            )
         )
 
     @agent_action
@@ -654,13 +741,6 @@ class WindowsFeishuACI(OSWorldACI):
             )
             click_code = build_feishu_uia_click_code(target_text, 1, "left")
 
-        overwrite_code = (
-            "pyautogui.hotkey('ctrl', 'a'); pyautogui.press('backspace');\n"
-            if overwrite
-            else ""
-        )
-        enter_code = "pyautogui.press('enter')\n" if enter else ""
-
         if click_code:
             # Already clicked a specific element — don't refocus the main window
             # (that would close any floating dialog that's now open).
@@ -670,32 +750,18 @@ class WindowsFeishuACI(OSWorldACI):
             focus_code = build_feishu_safe_focus_code()
 
         if click_code:
-            _indent = "    "
-            _ow = (
-                (_indent + overwrite_code.rstrip("\n") + "\n") if overwrite_code else ""
+            _paste_block = _build_feishu_clipboard_paste_code(
+                text,
+                overwrite=overwrite,
+                enter=enter,
+                call_guard="clicked",
             )
-            _en = (_indent + enter_code.rstrip("\n") + "\n") if enter_code else ""
-            _paste_block = (
-                f"if clicked:\n"
-                f"{_ow}"
-                f"{_indent}pyperclip.copy({text!r})\n"
-                f"{_indent}pyautogui.hotkey('ctrl', 'v')\n"
-                f"{_en}"
-            )
-            return (
-                focus_code
-                + f"\nimport pyautogui\nimport pyperclip\n{click_code}\n{_paste_block}\n"
-            )
+            return focus_code + f"\nimport pyautogui\n{click_code}\n{_paste_block}\n"
 
-        return (
-            focus_code
-            + f"""
-import pyautogui
-import pyperclip
-{overwrite_code}pyperclip.copy({text!r})
-pyautogui.hotkey('ctrl', 'v')
-{enter_code}
-"""
+        return focus_code + _build_feishu_clipboard_paste_code(
+            text,
+            overwrite=overwrite,
+            enter=enter,
         )
 
     @agent_action

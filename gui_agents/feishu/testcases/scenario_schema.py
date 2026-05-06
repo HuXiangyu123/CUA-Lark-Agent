@@ -126,6 +126,7 @@ def build_guidance_testcase(
         assertions=assertions or [],
         artifacts={
             "semantic_guidance_only": True,
+            "active_executor": "feishu_agent",
             "intent": intent,
             "params": params or {},
         },

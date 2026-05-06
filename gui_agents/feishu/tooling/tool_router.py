@@ -212,8 +212,72 @@ def _build_state_summary(state: FeishuState) -> str:
         parts.append("invite_popover_visible")
     if product_state.get("invite_dialog_visible"):
         parts.append("invite_dialog_visible")
+    if product_state.get("blocking_modal_visible"):
+        parts.append("blocking_modal_visible")
+    if product_state.get("permission_denied_visible"):
+        parts.append("permission_denied_visible")
+    if product_state.get("loading_visible"):
+        parts.append("loading_visible")
+    if product_state.get("wrong_surface"):
+        parts.append("wrong_surface")
+    if product_state.get("recovery_hint"):
+        parts.append(f"recovery_hint={product_state['recovery_hint']}")
 
     return ", ".join(parts)
+
+
+def _apply_anomaly_guidance(
+    product_state: dict,
+    enabled_tools: list[str],
+    preferred_tools: list[str],
+    hints: list[str],
+    rationale: list[str],
+) -> str | None:
+    recovery_hint = product_state.get("recovery_hint")
+    if not recovery_hint:
+        return None
+
+    hints.append(
+        f"Anomaly detected: recovery_hint={recovery_hint}. Treat this as semantic recovery guidance and re-check the screenshot before acting."
+    )
+    rationale.append(
+        "The current surface exposes an abnormal or blocking state, so recovery guidance takes priority over normal page progression."
+    )
+
+    if product_state.get("permission_denied_visible"):
+        enabled_tools.extend(["click", "wait"])
+        preferred_tools.insert(1, "wait")
+        hints.append(
+            "A permission-denied surface is visible. Report the permission blocker or use a visible request-permission control if the screenshot clearly offers one."
+        )
+        return "request_permission_or_report_blocker"
+
+    if product_state.get("wrong_surface"):
+        enabled_tools.extend(["click", "hotkey", "wait"])
+        preferred_tools.insert(1, "feishu_click")
+        hints.append(
+            "The current surface appears deleted, archived, or missing. Navigate back to the correct visible Feishu surface before continuing the task."
+        )
+        return "navigate_to_correct_surface"
+
+    if product_state.get("loading_visible"):
+        enabled_tools.append("wait")
+        preferred_tools.insert(1, "wait")
+        hints.append(
+            "A loading state is visible. Prefer waiting briefly and observing again before choosing a product-specific action."
+        )
+        return "wait_for_loading_to_complete"
+
+    if product_state.get("blocking_modal_visible"):
+        enabled_tools.extend(["click", "wait"])
+        preferred_tools.insert(1, "wait")
+        preferred_tools.insert(2, "click")
+        hints.append(
+            "A blocking modal appears to be visible. Decide from the visible modal text whether to wait, dismiss, retry, or stop for user help."
+        )
+        return "dismiss_blocking_modal"
+
+    return "current_recovery_surface"
 
 
 def route_feishu_tools(
@@ -246,6 +310,13 @@ def route_feishu_tools(
     hints: list[str] = []
     rationale: list[str] = []
     next_step_focus = "current_feishu_surface"
+    anomaly_next_step_focus = _apply_anomaly_guidance(
+        product_state,
+        enabled_tools,
+        preferred_tools,
+        hints,
+        rationale,
+    )
 
     if page_type == "shell_search":
         preferred_tools.extend(["feishu_type", "feishu_click", "hotkey"])
@@ -555,6 +626,9 @@ def route_feishu_tools(
             )
         if target_chat_name:
             hints.append(f"Instruction target chat hint: {target_chat_name}.")
+
+    if anomaly_next_step_focus:
+        next_step_focus = anomaly_next_step_focus
 
     preferred = _ordered_unique(preferred_tools)
     enabled = _ordered_unique(list(preferred) + enabled_tools)

@@ -38,8 +38,15 @@ class _FakeRecorder:
     def record_observation(self, step_index, observation):
         self.observations.append((step_index, observation))
 
-    def record_action(self, step_index, exec_code, status, failure_reason=None):
-        self.actions.append((step_index, exec_code, status, failure_reason))
+    def record_action(
+        self,
+        step_index,
+        exec_code,
+        status,
+        failure_reason=None,
+        reflection=None,
+    ):
+        self.actions.append((step_index, exec_code, status, failure_reason, reflection))
 
     def finalize(self, status=None, failure_reason=None, final_observation=None):
         self.finalized_with = (status, failure_reason, final_observation)
@@ -71,7 +78,7 @@ class TestS3CliRecorderIntegration(unittest.TestCase):
         self.assertEqual(recorder.observations[0][1]["capture_id"], 1)
         self.assertEqual(
             recorder.actions,
-            [(1, "agent.done()", "done", None)],
+            [(1, "agent.done()", "done", None, None)],
         )
         self.assertEqual(recorder.finalized_with[:2], ("completed", None))
         self.assertIsNotNone(recorder.finalized_with[2])

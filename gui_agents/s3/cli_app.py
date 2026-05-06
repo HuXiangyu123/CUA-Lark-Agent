@@ -2,6 +2,7 @@ import argparse
 import builtins
 import datetime
 import io
+import json
 import logging
 import os
 import platform
@@ -41,6 +42,31 @@ def _safe_console_text(value) -> str:
 
 def _print(*args, **kwargs) -> None:
     builtins.print(*[_safe_console_text(arg) for arg in args], **kwargs)
+
+
+class _TeeTextStream:
+    def __init__(self, primary, log_path: str):
+        self.primary = primary
+        self.log = open(log_path, "a", encoding="utf-8", buffering=1)
+        self.encoding = getattr(primary, "encoding", None) or "utf-8"
+        self.errors = getattr(primary, "errors", None) or "replace"
+
+    def write(self, text):
+        self.primary.write(text)
+        self.log.write(str(text))
+        self.flush()
+        return len(text)
+
+    def flush(self):
+        self.primary.flush()
+        self.log.flush()
+
+    def isatty(self):
+        return False
+
+    def close(self):
+        self.flush()
+        self.log.close()
 
 
 def get_char():
@@ -257,8 +283,35 @@ def run_agent(
     subtask_traj = ""
     final_status = "failed"
     final_failure_reason = "step budget exhausted"
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    tee_stream = None
     if recorder is not None:
-        recorder.start(instruction)
+        runtime_context = recorder.start(instruction)
+        runtime_stdout_path = (
+            recorder.runtime_stdout_path()
+            if hasattr(recorder, "runtime_stdout_path")
+            else None
+        )
+        if runtime_stdout_path:
+            tee_stream = _TeeTextStream(sys.stdout, runtime_stdout_path)
+            sys.stdout = tee_stream
+            sys.stderr = tee_stream
+            stdout_handler.setStream(tee_stream)
+        run_dir = recorder.run_dir() if hasattr(recorder, "run_dir") else None
+        run_id = (runtime_context or {}).get("run_id")
+        if run_id or run_dir:
+            _print(
+                "FEISHU_RUNTIME_STARTED:",
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "run_dir": run_dir,
+                        "runtime_stdout": runtime_stdout_path,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
 
     try:
         for step in range(max_steps):
@@ -282,6 +335,7 @@ def run_agent(
             # Get next action code from the agent
             info, code = agent.predict(instruction=instruction, observation=obs)
             exec_code = code[0]
+            reflection = info.get("reflection") if isinstance(info, dict) else None
 
             t_predict_elapsed = time.time() - t_predict_start
             _print(f"🧠 模型思考 {t_predict_elapsed:.1f}s")
@@ -296,6 +350,7 @@ def run_agent(
                         exec_code,
                         "failed" if is_fail else "done",
                         final_failure_reason,
+                        reflection=reflection,
                     )
                 if platform.system() == "Darwin":
                     os.system(
@@ -310,13 +365,23 @@ def run_agent(
 
             if "next" in exec_code.lower():
                 if recorder is not None:
-                    recorder.record_action(step_index, exec_code, "next")
+                    recorder.record_action(
+                        step_index,
+                        exec_code,
+                        "next",
+                        reflection=reflection,
+                    )
                 continue
 
             if "wait" in exec_code.lower():
                 _print("⏳ Agent requested wait...")
                 if recorder is not None:
-                    recorder.record_action(step_index, exec_code, "wait")
+                    recorder.record_action(
+                        step_index,
+                        exec_code,
+                        "wait",
+                        reflection=reflection,
+                    )
                 time.sleep(5)
                 continue
 
@@ -343,10 +408,16 @@ def run_agent(
                             exec_code,
                             "failed",
                             final_failure_reason,
+                            reflection=reflection,
                         )
                     raise
                 if recorder is not None:
-                    recorder.record_action(step_index, exec_code, "executed")
+                    recorder.record_action(
+                        step_index,
+                        exec_code,
+                        "executed",
+                        reflection=reflection,
+                    )
 
                 # Post-exec dynamic settle: longer for navigation-triggering actions
                 settle_post = _settle_delay(exec_code)
@@ -384,6 +455,11 @@ def run_agent(
             )
             if artifact_paths:
                 _print("FEISHU_RUNTIME_ARTIFACTS:", repr(artifact_paths))
+            if tee_stream is not None:
+                stdout_handler.setStream(original_stdout)
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+                tee_stream.close()
 
 
 def build_execution_runtime(

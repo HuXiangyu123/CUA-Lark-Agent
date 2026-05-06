@@ -77,6 +77,17 @@ class TestAssertionVerifier(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertIn("message_sent_visible=True", result["evidence"])
 
+    def test_verifies_im_search_panel_ready(self) -> None:
+        observation = self._observation("im_message_searchchat_visible.png")
+        state = detect_feishu_state(observation)
+
+        result = self.verifier.verify_assertion(
+            "im_search_panel_ready", state, observation
+        )
+
+        self.assertTrue(result["passed"])
+        self.assertIn("page_type=chat_search_panel", result["evidence"])
+
     def test_returns_structured_failure_for_mismatch(self) -> None:
         observation = self._observation("im_message_draft_visible.png")
         state = detect_feishu_state(observation)
@@ -244,6 +255,29 @@ class TestAssertionVerifier(unittest.TestCase):
 
         self.assertTrue(result["passed"])
         self.assertIn("body_text=本周完成联调", result["evidence"])
+
+    def test_verifies_docs_share_dialog_opened(self) -> None:
+        observation = self._docs_observation("云文档编辑界面_最近编辑.png")
+        state = detect_docs_state(observation)
+
+        state["product_state"]["share_dialog_visible"] = True
+        result = self.verifier.verify_assertion(
+            "docs_share_dialog_opened", state, observation
+        )
+
+        self.assertTrue(result["passed"])
+        self.assertIn("share_dialog_visible=True", result["evidence"])
+
+    def test_verifies_docs_share_dialog_not_visible(self) -> None:
+        observation = self._docs_observation("云文档编辑界面_最近编辑.png")
+        state = detect_docs_state(observation)
+
+        result = self.verifier.verify_assertion(
+            "docs_share_dialog_opened", state, observation
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failure_type"], "verification")
 
     def test_verifies_calendar_home_ready(self) -> None:
         observation = self._calendar_observation("日历主页.png")

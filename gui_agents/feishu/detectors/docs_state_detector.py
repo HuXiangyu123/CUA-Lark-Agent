@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from gui_agents.feishu.contracts import FeishuState
+from gui_agents.feishu.detectors.anomaly import merge_anomaly_product_state
 from gui_agents.feishu.observation import normalize_observation
 from gui_agents.feishu.pages.registry import get_page_descriptor
 
@@ -13,6 +14,7 @@ DOCS_HOME_KEYWORDS = ("云文档", "主页", "新建", "上传", "模板库")
 DOCS_NEW_DROPDOWN_KEYWORDS = ("新建", "文档", "多维表格", "文件夹")
 DOCS_TEMPLATE_GALLERY_KEYWORDS = ("搜索模板", "新建空白文档", "为你推荐")
 DOCS_BROWSER_EDITOR_KEYWORDS = ("飞书云文档", "请输入标题", "快速插入内容", "分享")
+DOCS_SHARE_DIALOG_KEYWORDS = ("分享链接", "邀请协作", "复制链接", "权限设置")
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
@@ -40,7 +42,16 @@ def _fallback_state(observation: dict[str, Any]) -> FeishuState:
     page_id = None
     product_state: dict[str, Any] = {}
 
-    if _contains_any(ocr_text, DOCS_BROWSER_EDITOR_KEYWORDS):
+    share_dialog_keywords_matched = sum(
+        1 for kw in DOCS_SHARE_DIALOG_KEYWORDS if kw in ocr_text
+    )
+    if share_dialog_keywords_matched >= 2:
+        page_id = "docs_browser_editor"
+        product_state = {
+            "editor_ready": True,
+            "share_dialog_visible": True,
+        }
+    elif _contains_any(ocr_text, DOCS_BROWSER_EDITOR_KEYWORDS):
         page_id = "docs_browser_editor"
         product_state = {"editor_ready": True}
     elif _contains_any(ocr_text, DOCS_TEMPLATE_GALLERY_KEYWORDS):
@@ -56,6 +67,7 @@ def _fallback_state(observation: dict[str, Any]) -> FeishuState:
             "new_card_visible": "新建" in ocr_text,
             "document_list_visible": "最近访问" in ocr_text or "所有者" in ocr_text,
         }
+    product_state = merge_anomaly_product_state(product_state, ocr_text)
 
     descriptor = get_page_descriptor(page_id) if page_id else None
     return FeishuState(

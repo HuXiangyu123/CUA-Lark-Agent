@@ -10,9 +10,15 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
+from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 
 import pyautogui
+from gui_agents.feishu.reports.dashboard_server import (
+    DashboardServerHandle,
+    start_dashboard_server,
+)
 
 try:
     from openai import OpenAI
@@ -31,6 +37,8 @@ HISTORY_FILE = os.path.join(PROJECT_DIR, "command_history.json")
 EVAL_SUITE_FILE = os.path.join(
     PROJECT_DIR, "tests", "eval_suite", "feishu_eval_suite.json"
 )
+ARTIFACT_TEST_RUNS_DIR = os.path.join(PROJECT_DIR, "artifacts", "test_runs")
+ARTIFACT_EVALUATION_DIR = os.path.join(PROJECT_DIR, "artifacts", "evaluation")
 
 CANDIDATE_COMMANDS = [
     "打开消息中的 bot 功能测试群聊，发送“Hello World”，并确认消息已发送",
@@ -140,7 +148,7 @@ def _default_config() -> dict:
         "reflection_mode": "on_failure",
         "reasoning_effort": "medium",
         "budget": 25,
-        "execution_mode": "classic_s3",
+        "execution_mode": "feishu_agent",
         "grounding_overrides": {},
         "detected_environment": None,
         "model_api_key": "",
@@ -350,6 +358,432 @@ def detect_environment() -> dict:
     return env
 
 
+def _read_json_object(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def mark_run_aborted(
+    run_dir: str | Path,
+    *,
+    run_id: str | None = None,
+    reason: str = "launcher manual stop",
+) -> dict:
+    """Mark an already-created run directory as manually aborted."""
+
+    path = Path(run_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    summary_path = path / "summary.json"
+    summary = _read_json_object(summary_path) if summary_path.exists() else {}
+    resolved_run_id = run_id or summary.get("run_id") or path.name
+    completed_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    summary.update(
+        {
+            "run_id": resolved_run_id,
+            "status": "aborted",
+            "result": "aborted",
+            "failure_type": "manual_stop",
+            "failure_reason": reason,
+            "completed_at": completed_at,
+        }
+    )
+    manifest = summary.get("artifact_manifest")
+    if not isinstance(manifest, dict):
+        manifest = {}
+    manifest.update(
+        {
+            "run_dir": str(path),
+            "summary": str(summary_path),
+            "report": str(path / "report.md"),
+            "actions": str(path / "actions.jsonl"),
+            "replay_draft": str(path / "replay_draft.md"),
+            "runtime_state": str(path / "runtime_state.json"),
+            "runtime_stdout": str(path / "runtime_stdout.log"),
+            "artifact_error": str(path / "artifact_error.txt"),
+        }
+    )
+    summary["artifact_manifest"] = manifest
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    abort_note = (
+        f"\n\n## Manual Stop\n\n"
+        f"- Status: `aborted`\n"
+        f"- Reason: `{reason}`\n"
+        f"- Completed At: `{completed_at}`\n"
+    )
+    report_path = path / "report.md"
+    if report_path.exists():
+        report_path.write_text(
+            report_path.read_text(encoding="utf-8", errors="replace") + abort_note,
+            encoding="utf-8",
+        )
+    else:
+        report_path.write_text(
+            f"# Feishu Run Report\n\n- Run ID: `{resolved_run_id}`" + abort_note,
+            encoding="utf-8",
+        )
+
+    replay_path = path / "replay_draft.md"
+    if replay_path.exists():
+        replay_path.write_text(
+            replay_path.read_text(encoding="utf-8", errors="replace") + abort_note,
+            encoding="utf-8",
+        )
+    else:
+        replay_path.write_text(
+            f"# Replay Draft - Run {resolved_run_id}\n" + abort_note,
+            encoding="utf-8",
+        )
+
+    (path / "artifact_error.txt").write_text(
+        f"{completed_at} {reason}\n",
+        encoding="utf-8",
+    )
+    return summary
+
+
+_REPLAY_STEP_FIELDS = {
+    "step_index",
+    "step_id",
+    "product",
+    "page_type",
+    "visible_controls",
+    "action_summary",
+    "verification",
+    "verification_passed",
+    "failure_type",
+    "recovery_attempt",
+    "timestamp",
+}
+
+_FORBIDDEN_REPLAY_TOKENS = (
+    "relative_bounds",
+    "bbox",
+    "bounding_box",
+    "coordinate",
+    "coordinates",
+    "confidence",
+    "pixel",
+    "pixels",
+    "resolution",
+    "image_width",
+    "image_height",
+)
+
+_LEGACY_REPLAY_ARTIFACTS = (
+    "summary.json",
+    "report.md",
+    "actions.jsonl",
+    "screenshots",
+    "semantic_trace.json",
+    "replay_draft.md",
+)
+
+
+def _safe_replay_text(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    lowered = text.lower()
+    if not text or any(token in lowered for token in _FORBIDDEN_REPLAY_TOKENS):
+        return None
+    if re.search(r"\(\s*\d+\s*,\s*\d+", text):
+        return None
+    return text
+
+
+def load_semantic_trace_steps(path: str | os.PathLike | None) -> list[dict]:
+    if not path:
+        return []
+    trace_path = Path(path)
+    if not trace_path.exists():
+        return []
+    try:
+        data = json.loads(trace_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+
+    steps: list[dict] = []
+    for raw_step in data:
+        if not isinstance(raw_step, dict):
+            continue
+        step: dict = {}
+        for key in _REPLAY_STEP_FIELDS:
+            if key not in raw_step:
+                continue
+            value = raw_step.get(key)
+            if key == "visible_controls":
+                if not isinstance(value, list):
+                    continue
+                controls = [
+                    item
+                    for item in (_safe_replay_text(control) for control in value)
+                    if item
+                ]
+                if controls:
+                    step[key] = controls
+            elif key in {"verification_passed", "recovery_attempt"}:
+                if value is not None:
+                    step[key] = bool(value)
+            elif key == "step_index":
+                if isinstance(value, int):
+                    step[key] = value
+            else:
+                text = _safe_replay_text(value)
+                if text is not None:
+                    step[key] = text
+        if step:
+            steps.append(step)
+    return steps
+
+
+def format_replay_step_label(step: dict, ordinal: int) -> str:
+    status = "passed" if step.get("verification_passed") else "review"
+    if step.get("verification_passed") is False or step.get("failure_type"):
+        status = "failed"
+    page = step.get("page_type") or "unknown"
+    action = step.get("action_summary") or "semantic action"
+    return f"{ordinal:02d} | {status} | {page} | {action}"
+
+
+def render_replay_step_detail(step: dict, ordinal: int) -> str:
+    lines = [
+        f"Step {ordinal}",
+        "",
+        f"Step ID: {step.get('step_id') or '<unknown>'}",
+        f"Product: {step.get('product') or '<unknown>'}",
+        f"Page: {step.get('page_type') or '<unknown>'}",
+        f"Action: {step.get('action_summary') or '<not recorded>'}",
+    ]
+    controls = step.get("visible_controls") or []
+    if controls:
+        lines.append(f"Visible controls: {', '.join(controls)}")
+    if step.get("verification"):
+        result = step.get("verification_passed")
+        if result is True:
+            result_text = "passed"
+        elif result is False:
+            result_text = "failed"
+        else:
+            result_text = "not recorded"
+        lines.append(f"Verification: {step.get('verification')} ({result_text})")
+    if step.get("failure_type"):
+        lines.append(f"Failure type: {step.get('failure_type')}")
+    if step.get("recovery_attempt"):
+        lines.append("Recovery: yes")
+    if step.get("timestamp"):
+        lines.append(f"Timestamp: {step.get('timestamp')}")
+    return "\n".join(lines) + "\n"
+
+
+def build_replay_review_summary(run: dict, steps: list[dict]) -> dict:
+    failed = [
+        step
+        for step in steps
+        if step.get("verification_passed") is False or step.get("failure_type")
+    ]
+    passed = [step for step in steps if step.get("verification_passed") is True]
+    recovered = [step for step in steps if step.get("recovery_attempt")]
+    pages = []
+    for step in steps:
+        page = step.get("page_type")
+        if page and page not in pages:
+            pages.append(page)
+
+    warnings: list[str] = []
+    if not run.get("semantic_trace"):
+        warnings.append("missing semantic_trace.json")
+    if not run.get("replay_draft"):
+        if run.get("report"):
+            warnings.append("missing replay_draft.md; showing legacy report.md")
+        else:
+            warnings.append("missing replay_draft.md")
+    if not steps:
+        warnings.append("no semantic steps")
+    if run.get("screenshots_count", 0) == 0:
+        warnings.append("no screenshots")
+    for ordinal, step in enumerate(steps, start=1):
+        missing = [
+            label
+            for label, field in (
+                ("page", "page_type"),
+                ("action", "action_summary"),
+                ("verification", "verification"),
+            )
+            if not step.get(field)
+        ]
+        if missing:
+            warnings.append(f"step {ordinal} missing {', '.join(missing)}")
+
+    return {
+        "run_id": run.get("run_id"),
+        "product": run.get("product"),
+        "status": run.get("status"),
+        "steps": len(steps),
+        "passed_steps": len(passed),
+        "failed_steps": len(failed),
+        "recovery_steps": len(recovered),
+        "screenshots": run.get("screenshots_count", 0),
+        "pages": pages,
+        "warnings": warnings,
+    }
+
+
+def render_replay_review_summary(run: dict, steps: list[dict]) -> str:
+    summary = build_replay_review_summary(run, steps)
+    warnings = summary["warnings"]
+    lines = [
+        "Replay Review Summary",
+        "",
+        f"Run: {summary.get('run_id') or '<unknown>'}",
+        f"Product: {summary.get('product') or '<unknown>'}",
+        f"Status: {summary.get('status') or '<unknown>'}",
+        (
+            f"Steps: {summary['steps']} total, {summary['passed_steps']} passed, "
+            f"{summary['failed_steps']} failed, {summary['recovery_steps']} recovery"
+        ),
+        f"Screenshots: {summary['screenshots']}",
+        f"Page path: {' -> '.join(summary['pages']) if summary['pages'] else '<none>'}",
+        f"Warnings: {', '.join(warnings) if warnings else 'none'}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def discover_semantic_replay_runs(
+    artifact_root: str | os.PathLike | None = None,
+) -> list[dict]:
+    """Discover read-only run artifacts without executing anything."""
+
+    root = Path(artifact_root or ARTIFACT_TEST_RUNS_DIR)
+    if not root.exists() or not root.is_dir():
+        return []
+
+    runs: list[dict] = []
+    for run_dir in root.iterdir():
+        if not run_dir.is_dir():
+            continue
+        replay_path = run_dir / "replay_draft.md"
+        trace_path = run_dir / "semantic_trace.json"
+        summary_path = run_dir / "summary.json"
+        report_path = run_dir / "report.md"
+        actions_path = run_dir / "actions.jsonl"
+        screenshots_dir = run_dir / "screenshots"
+        recognized_paths = [
+            run_dir / artifact_name for artifact_name in _LEGACY_REPLAY_ARTIFACTS
+        ]
+        existing_paths = [path for path in recognized_paths if path.exists()]
+        if not existing_paths:
+            continue
+
+        summary = _read_json_object(summary_path) if summary_path.exists() else {}
+        updated_at = max(path.stat().st_mtime for path in existing_paths)
+        trace_steps = load_semantic_trace_steps(trace_path)
+        screenshots_count = (
+            len([path for path in screenshots_dir.iterdir() if path.is_file()])
+            if screenshots_dir.exists()
+            else 0
+        )
+        runs.append(
+            {
+                "run_id": summary.get("run_id") or run_dir.name,
+                "task_id": summary.get("task_id"),
+                "task_title": summary.get("task_title")
+                or summary.get("task_id")
+                or summary.get("intent"),
+                "product": summary.get("product"),
+                "status": summary.get("status"),
+                "run_dir": str(run_dir),
+                "summary": str(summary_path) if summary_path.exists() else None,
+                "semantic_trace": str(trace_path) if trace_path.exists() else None,
+                "replay_draft": str(replay_path) if replay_path.exists() else None,
+                "report": str(report_path) if report_path.exists() else None,
+                "actions": str(actions_path) if actions_path.exists() else None,
+                "trace_steps": len(trace_steps),
+                "screenshots_dir": (
+                    str(screenshots_dir) if screenshots_dir.exists() else None
+                ),
+                "screenshots_count": screenshots_count,
+                "updated_at": updated_at,
+            }
+        )
+    return sorted(runs, key=lambda item: item["updated_at"], reverse=True)
+
+
+def select_replay_preview_path(run: dict | None) -> str | None:
+    if not run:
+        return None
+    return run.get("replay_draft") or run.get("report")
+
+
+def load_replay_draft_preview(
+    path: str | os.PathLike | None, limit: int = 20000
+) -> str:
+    if not path:
+        return "该运行没有 replay_draft.md。"
+    replay_path = Path(path)
+    if not replay_path.exists():
+        return "该运行没有 replay_draft.md。"
+    text = replay_path.read_text(encoding="utf-8", errors="replace")
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n\n[preview truncated]\n"
+
+
+def load_replay_artifact_preview(run: dict | None, limit: int = 20000) -> str:
+    if not run:
+        return "请选择一个运行记录。"
+    if run.get("replay_draft"):
+        return load_replay_draft_preview(run.get("replay_draft"), limit=limit)
+    report_path = run.get("report")
+    if not report_path:
+        return "该运行没有 replay_draft.md 或 report.md。"
+    report = Path(report_path)
+    if not report.exists():
+        return "该运行没有 replay_draft.md 或 report.md。"
+    text = report.read_text(encoding="utf-8", errors="replace")
+    prefix = "该运行没有 replay_draft.md，以下显示旧版 report.md。\n\n"
+    if len(text) <= limit:
+        return prefix + text
+    return prefix + text[:limit] + "\n\n[preview truncated]\n"
+
+
+def open_path_in_shell(path: str | os.PathLike | None) -> bool:
+    if not path:
+        return False
+    target = Path(path)
+    if not target.exists():
+        return False
+    if platform.system() == "Windows":
+        os.startfile(str(target))  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(
+            ["open" if platform.system() == "Darwin" else "xdg-open", str(target)]
+        )
+    return True
+
+
+def ensure_dashboard_server(
+    handle: DashboardServerHandle | None,
+    *,
+    artifact_root: str | os.PathLike = ARTIFACT_TEST_RUNS_DIR,
+    evaluation_dir: str | os.PathLike = ARTIFACT_EVALUATION_DIR,
+) -> DashboardServerHandle:
+    if handle is not None and handle.thread.is_alive():
+        return handle
+    return start_dashboard_server(
+        artifact_root=artifact_root,
+        evaluation_dir=evaluation_dir,
+    )
+
+
 class Launcher:
     def __init__(self):
         self.colors = {
@@ -398,8 +832,10 @@ class Launcher:
         self.process = None
         self.output_queue = queue.Queue()
         self.agent_ready = False
+        self.dashboard_server_handle: DashboardServerHandle | None = None
         self.cfg = load_config()
         self.command_history = self._load_command_history()
+        self._full_command_history = list(self.command_history)
 
         if not self.cfg.get("first_run_completed"):
             self.cfg["detected_environment"] = detect_environment()
@@ -546,8 +982,12 @@ class Launcher:
         self.v_status = tk.StringVar()
         self.v_status_detail = tk.StringVar()
         self.v_query = tk.StringVar()
+        self.current_run_id = None
+        self.current_run_dir = None
         self.v_execution_mode = tk.StringVar(
-            value=EXECUTION_MODES[self.cfg.get("execution_mode", "classic_s3")]["label"]
+            value=EXECUTION_MODES[
+                self.cfg.get("execution_mode", DEFAULT_CONFIG["execution_mode"])
+            ]["label"]
         )
         self.v_main_provider = tk.StringVar()
         self.v_model_key = tk.StringVar()
@@ -570,6 +1010,7 @@ class Launcher:
         self.v_summary_main = tk.StringVar()
         self.v_summary_ground = tk.StringVar()
         self.v_summary_runtime = tk.StringVar()
+        self.v_replay_meta = tk.StringVar(value="尚未选择运行")
 
     def _build_ui(self):
         self.root.columnconfigure(0, weight=1)
@@ -617,6 +1058,13 @@ class Launcher:
             pady=8,
         )
         self.status_badge.pack(side="left", padx=(0, 16))
+        self.btn_dashboard = ttk.Button(
+            hero_actions,
+            text="Dashboard",
+            style="Subtle.TButton",
+            command=self._open_dashboard,
+        )
+        self.btn_dashboard.pack(side="left", padx=(0, 12))
         self.btn_stop = ttk.Button(
             hero_actions,
             text="停止任务",
@@ -668,6 +1116,17 @@ class Launcher:
             cursor="hand2",
         )
         tab_sop.grid(row=0, column=1)
+        tab_replay = tk.Label(
+            switcher,
+            text="语义回放",
+            bg=self.colors["border"],
+            fg=self.colors["muted"],
+            font=("Segoe UI Variable Display", 11),
+            padx=24,
+            pady=8,
+            cursor="hand2",
+        )
+        tab_replay.grid(row=0, column=2)
 
         tab_stack = ttk.Frame(left_pane, style="App.TFrame")
         tab_stack.grid(row=1, column=0, sticky="nsew")
@@ -685,41 +1144,48 @@ class Launcher:
             highlightbackground=self.colors["border"],
             highlightthickness=1,
         )
+        replay_tab = tk.Frame(
+            tab_stack,
+            bg=self.colors["panel"],
+            highlightbackground=self.colors["border"],
+            highlightthickness=1,
+        )
         agent_tab.grid(row=0, column=0, sticky="nsew")
         sop_tab.grid(row=0, column=0, sticky="nsew")
+        replay_tab.grid(row=0, column=0, sticky="nsew")
 
         self._build_agent_tab(agent_tab)
         self._build_sop_tab(sop_tab)
+        self._build_replay_tab(replay_tab)
         agent_tab.tkraise()
 
-        def switch_to_agent(_event=None):
-            tab_agent.configure(
+        def activate_tab(active_label, active_frame):
+            for label in (tab_agent, tab_sop, tab_replay):
+                label.configure(
+                    bg=self.colors["border"],
+                    fg=self.colors["muted"],
+                    font=("Segoe UI Variable Display", 11),
+                )
+            active_label.configure(
                 bg=self.colors["panel"],
                 fg=self.colors["accent"],
                 font=("Segoe UI Variable Display", 11, "bold"),
             )
-            tab_sop.configure(
-                bg=self.colors["border"],
-                fg=self.colors["muted"],
-                font=("Segoe UI Variable Display", 11),
-            )
-            agent_tab.tkraise()
+            active_frame.tkraise()
+
+        def switch_to_agent(_event=None):
+            activate_tab(tab_agent, agent_tab)
 
         def switch_to_sop(_event=None):
-            tab_sop.configure(
-                bg=self.colors["panel"],
-                fg=self.colors["accent"],
-                font=("Segoe UI Variable Display", 11, "bold"),
-            )
-            tab_agent.configure(
-                bg=self.colors["border"],
-                fg=self.colors["muted"],
-                font=("Segoe UI Variable Display", 11),
-            )
-            sop_tab.tkraise()
+            activate_tab(tab_sop, sop_tab)
+
+        def switch_to_replay(_event=None):
+            activate_tab(tab_replay, replay_tab)
+            self._reload_replay_runs()
 
         tab_agent.bind("<Button-1>", switch_to_agent)
         tab_sop.bind("<Button-1>", switch_to_sop)
+        tab_replay.bind("<Button-1>", switch_to_replay)
 
         right_pane = ttk.Frame(main_content, style="App.TFrame")
         right_pane.grid(row=0, column=1, sticky="nsew")
@@ -1069,6 +1535,10 @@ class Launcher:
         )
         self.cb_query.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         self.cb_query.bind("<Return>", lambda _event: self._send_query())
+        self.cb_query.bind("<KeyRelease>", self._on_query_keyrelease)
+        self.cb_query.bind("<FocusOut>", lambda _e: self._hide_suggestions())
+        self._suggestion_popup: tk.Toplevel | None = None
+        self._suggestion_listbox: tk.Listbox | None = None
         self.btn_pull = ttk.Button(
             inp,
             text="拉取示例",
@@ -1142,6 +1612,170 @@ class Launcher:
         self.sop_log.tag_config("err", foreground="#ff3b30")
         self.sop_log.tag_config("info", foreground="#4a6cf7")
         self._reload_sops()
+
+    def _build_replay_tab(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+
+        bar = ttk.Frame(parent, style="Panel.TFrame", padding=(24, 16))
+        bar.grid(row=0, column=0, sticky="ew")
+        ttk.Button(
+            bar,
+            text="刷新回放列表",
+            style="Subtle.TButton",
+            command=self._reload_replay_runs,
+        ).pack(side="left")
+        ttk.Button(
+            bar,
+            text="打开运行目录",
+            style="Subtle.TButton",
+            command=self._open_selected_replay_dir,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            bar,
+            text="打开草稿/报告",
+            style="Primary.TButton",
+            command=self._open_selected_replay_draft,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            bar,
+            text="打开截图目录",
+            style="Subtle.TButton",
+            command=self._open_selected_screenshots_dir,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            bar,
+            text="复制审阅摘要",
+            style="Subtle.TButton",
+            command=self._copy_replay_review_summary,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Label(
+            bar,
+            text="只读查看 semantic_trace.json / replay_draft.md，不执行回放。",
+            style="Muted.TLabel",
+        ).pack(side="left", padx=(12, 0))
+
+        content = ttk.Frame(parent, style="Panel.TFrame", padding=(24, 0, 24, 16))
+        content.grid(row=1, column=0, sticky="nsew")
+        content.columnconfigure(0, weight=2)
+        content.columnconfigure(1, weight=3)
+        content.rowconfigure(0, weight=1)
+
+        list_frame = ttk.LabelFrame(
+            content, text="运行记录", style="Card.TLabelframe", padding=10
+        )
+        list_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+        self.replay_listbox = tk.Listbox(
+            list_frame,
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            selectbackground=self.colors["accent"],
+            selectforeground=self.colors["button_text"],
+            font=("Microsoft YaHei UI", 9),
+            activestyle="none",
+            exportselection=False,
+            borderwidth=0,
+            highlightthickness=0,
+        )
+        self.replay_listbox.grid(row=0, column=0, sticky="nsew")
+        replay_scroll = ttk.Scrollbar(
+            list_frame, orient="vertical", command=self.replay_listbox.yview
+        )
+        replay_scroll.grid(row=0, column=1, sticky="ns")
+        self.replay_listbox.configure(yscrollcommand=replay_scroll.set)
+        self.replay_listbox.bind("<<ListboxSelect>>", self._on_replay_select)
+        self.replay_listbox.bind(
+            "<Double-Button-1>", lambda _event: self._open_selected_replay_draft()
+        )
+
+        preview_frame = ttk.LabelFrame(
+            content, text="回放草稿预览", style="Card.TLabelframe", padding=10
+        )
+        preview_frame.grid(row=0, column=1, sticky="nsew")
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.rowconfigure(2, weight=1)
+        preview_frame.rowconfigure(4, weight=2)
+        ttk.Label(
+            preview_frame,
+            textvariable=self.v_replay_meta,
+            style="Muted.TLabel",
+            wraplength=520,
+        ).grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.replay_overview = scrolledtext.ScrolledText(
+            preview_frame,
+            wrap="word",
+            height=7,
+            font=("Cascadia Code", 9),
+            state="disabled",
+            bg=self.colors["input_bg"],
+            fg=self.colors["text"],
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=10,
+        )
+        self.replay_overview.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+
+        timeline = ttk.Frame(preview_frame, style="Panel.TFrame")
+        timeline.grid(row=2, column=0, sticky="nsew", pady=(0, 8))
+        timeline.columnconfigure(0, weight=2)
+        timeline.columnconfigure(1, weight=3)
+        timeline.rowconfigure(0, weight=1)
+        self.replay_step_listbox = tk.Listbox(
+            timeline,
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            selectbackground=self.colors["accent"],
+            selectforeground=self.colors["button_text"],
+            font=("Microsoft YaHei UI", 9),
+            activestyle="none",
+            exportselection=False,
+            borderwidth=0,
+            highlightthickness=1,
+            highlightbackground=self.colors["border"],
+        )
+        self.replay_step_listbox.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.replay_step_listbox.bind("<<ListboxSelect>>", self._on_replay_step_select)
+        self.replay_step_detail = scrolledtext.ScrolledText(
+            timeline,
+            wrap="word",
+            height=8,
+            font=("Cascadia Code", 9),
+            state="disabled",
+            bg=self.colors["log_bg"],
+            fg=self.colors["text"],
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=10,
+        )
+        self.replay_step_detail.grid(row=0, column=1, sticky="nsew")
+
+        ttk.Label(
+            preview_frame,
+            text="Markdown 回放草稿",
+            style="Section.TLabel",
+        ).grid(row=3, column=0, sticky="w", pady=(0, 6))
+        self.replay_preview = scrolledtext.ScrolledText(
+            preview_frame,
+            wrap="word",
+            height=10,
+            font=("Cascadia Code", 9),
+            state="disabled",
+            bg=self.colors["log_bg"],
+            fg=self.colors["text"],
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=10,
+        )
+        self.replay_preview.grid(row=4, column=0, sticky="nsew")
+        self._replay_runs: list[dict] = []
+        self._selected_replay_index: int | None = None
+        self._current_replay_steps: list[dict] = []
+        self._reload_replay_runs()
 
     def _provider_key_from_label(self, table: dict, label: str, default: str) -> str:
         for key, spec in table.items():
@@ -1262,9 +1896,10 @@ class Launcher:
             f"{ground_spec['label']} · {self.v_ground_model.get().strip() or ground_spec['default_model']}"
         )
         mode_key = self._execution_mode_key_from_label(self.v_execution_mode.get())
-        mode_summary = EXECUTION_MODES.get(mode_key, EXECUTION_MODES["classic_s3"])[
-            "summary"
-        ]
+        mode_summary = EXECUTION_MODES.get(
+            mode_key,
+            EXECUTION_MODES[DEFAULT_CONFIG["execution_mode"]],
+        )["summary"]
         self.v_summary_runtime.set(
             f"mode={mode_summary} · reflection={self.v_reflection_mode.get()} · reasoning={self.v_reasoning_effort.get()} · budget={self.v_budget.get() or 25}"
         )
@@ -1287,6 +1922,37 @@ class Launcher:
         self.cfg["detected_environment"] = detect_environment()
         self._load_resolution_from_config()
         self._set_status("环境已刷新", "saved", "已更新屏幕分辨率与推荐配置")
+
+    def _open_dashboard(self):
+        try:
+            self.dashboard_server_handle = ensure_dashboard_server(
+                self.dashboard_server_handle,
+                artifact_root=ARTIFACT_TEST_RUNS_DIR,
+                evaluation_dir=ARTIFACT_EVALUATION_DIR,
+            )
+            webbrowser.open_new_tab(self.dashboard_server_handle.url)
+            self._set_status(
+                "Dashboard ready",
+                "saved",
+                f"Local evaluation dashboard: {self.dashboard_server_handle.url}",
+            )
+        except Exception as exc:
+            messagebox.showerror("Dashboard error", str(exc))
+            self._set_status(
+                "Dashboard error",
+                "stopped",
+                f"Failed to open evaluation dashboard: {exc}",
+            )
+
+    def _stop_dashboard_server(self):
+        if self.dashboard_server_handle is None:
+            return
+        try:
+            self.dashboard_server_handle.stop()
+        except Exception as exc:
+            _warn(f"stop dashboard server failed: {exc!r}")
+        finally:
+            self.dashboard_server_handle = None
 
     def _test_connectivity(self):
         if not _OPENAI_AVAILABLE:
@@ -1454,6 +2120,19 @@ class Launcher:
 
     def _stop_agent(self):
         if self.process:
+            if self.current_run_dir:
+                try:
+                    mark_run_aborted(
+                        self.current_run_dir,
+                        run_id=self.current_run_id,
+                        reason="launcher stop button pressed",
+                    )
+                    self._log(
+                        f"\n已标记运行中止：{self.current_run_dir}\n",
+                        "warn",
+                    )
+                except Exception as exc:
+                    _warn(f"mark run aborted failed: {exc!r}")
             try:
                 self.process.terminate()
             except Exception as exc:
@@ -1526,10 +2205,29 @@ class Launcher:
                     self._startup_timeout_id = None
                 self.btn_send.configure(state="normal")
                 self.cb_query.configure(state="normal")
+                self.cb_query["values"] = list(self._full_command_history)
                 self.btn_pull.configure(state="normal")
                 self.cb_query.focus()
                 self._set_status("就绪", "ready", "Agent 已完成初始化，可发送任务")
                 self._log("✅ Agent 就绪，请在下方输入任务\n", "success")
+            return
+
+        if line_strip.startswith("FEISHU_RUNTIME_STARTED:"):
+            payload = line_strip.split("FEISHU_RUNTIME_STARTED:", 1)[1].strip()
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                data = {}
+            self.current_run_id = data.get("run_id") or self.current_run_id
+            self.current_run_dir = data.get("run_dir") or self.current_run_dir
+            if self.current_run_dir:
+                self._log(f"运行产物目录：{self.current_run_dir}\n", "muted")
+            return
+
+        if line_strip.startswith("FEISHU_RUNTIME_ARTIFACTS:"):
+            self.current_run_id = None
+            self.current_run_dir = None
+            self._log("结构化运行产物已写入。\n", "success")
             return
 
         if "Would you like to provide another query" in line:
@@ -1662,12 +2360,13 @@ class Launcher:
             _warn(f"save command history failed: {exc!r}")
 
     def _add_to_history(self, query: str):
-        values = list(self.cb_query["values"])
-        if query in values:
-            values.remove(query)
-        values.insert(0, query)
-        self.cb_query["values"] = values[:50]
-        self._save_command_history(list(self.cb_query["values"]))
+        full = self._full_command_history
+        if query in full:
+            full.remove(query)
+        full.insert(0, query)
+        self._full_command_history = full[:50]
+        self.cb_query["values"] = list(self._full_command_history)
+        self._save_command_history(list(self._full_command_history))
 
     def _load_eval_suite_manifest(self) -> list[dict]:
         """Load test cases from the eval suite manifest."""
@@ -1722,7 +2421,7 @@ class Launcher:
         list_frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
         listbox = tk.Listbox(
             list_frame,
-            bg=self.colors["surface"],
+            bg=self.colors["panel"],
             fg=self.colors["text"],
             selectbackground=self.colors["accent"],
             selectforeground=self.colors["button_text"],
@@ -1812,6 +2511,108 @@ class Launcher:
         # ── keyboard: escape to close ──
         dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
+    def _on_query_keyrelease(self, event):
+        if event.keysym in (
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Tab",
+            "Escape",
+            "Control_L",
+            "Control_R",
+            "Shift_L",
+            "Shift_R",
+            "Home",
+            "End",
+        ):
+            if event.keysym == "Down" and self._suggestion_popup:
+                self._suggestion_listbox.focus_set()
+                self._suggestion_listbox.selection_set(0)
+                return
+            if event.keysym == "Escape":
+                self._hide_suggestions()
+                return
+            return
+        typed = self.v_query.get()
+        if not typed:
+            self._hide_suggestions()
+            return
+        lowered = typed.lower()
+        filtered = [cmd for cmd in self._full_command_history if lowered in cmd.lower()]
+        if filtered:
+            self._show_suggestions(filtered)
+        else:
+            self._hide_suggestions()
+
+    def _ensure_suggestion_popup(self):
+        if self._suggestion_popup is not None:
+            return
+        popup = tk.Toplevel(self.root)
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.configure(bg=self.colors["border"])
+        listbox = tk.Listbox(
+            popup,
+            bg=self.colors["panel"],
+            fg=self.colors["text"],
+            selectbackground=self.colors["accent"],
+            selectforeground=self.colors["button_text"],
+            font=("Microsoft YaHei UI", 10),
+            activestyle="none",
+            borderwidth=0,
+            highlightthickness=0,
+            height=6,
+        )
+        listbox.pack(padx=1, pady=1)
+        listbox.bind("<Return>", lambda _e: self._accept_suggestion())
+        listbox.bind("<Escape>", lambda _e: self._hide_suggestions())
+        listbox.bind("<ButtonRelease-1>", lambda _e: self._accept_suggestion())
+        listbox.bind("<Up>", lambda _e: self._suggestion_navigate(-1))
+        listbox.bind("<Down>", lambda _e: self._suggestion_navigate(1))
+        self._suggestion_popup = popup
+        self._suggestion_listbox = listbox
+
+    def _show_suggestions(self, items: list[str]):
+        self._ensure_suggestion_popup()
+        self._suggestion_listbox.delete(0, "end")
+        for item in items:
+            self._suggestion_listbox.insert("end", item)
+        self._suggestion_listbox.selection_clear(0, "end")
+        x = self.cb_query.winfo_rootx()
+        y = self.cb_query.winfo_rooty() + self.cb_query.winfo_height()
+        w = self.cb_query.winfo_width()
+        self._suggestion_popup.geometry(f"{w}x{160}+{x}+{y}")
+        self._suggestion_popup.deiconify()
+        self._suggestion_popup.lift()
+
+    def _hide_suggestions(self, *_args):
+        if self._suggestion_popup:
+            self._suggestion_popup.withdraw()
+
+    def _accept_suggestion(self):
+        sel = self._suggestion_listbox.curselection()
+        if sel:
+            text = self._suggestion_listbox.get(sel[0])
+            self.v_query.set(text)
+            self._hide_suggestions()
+            self.cb_query.focus_set()
+            self.cb_query.icursor(len(text))
+
+    def _suggestion_navigate(self, delta):
+        size = self._suggestion_listbox.size()
+        if size == 0:
+            return
+        sel = self._suggestion_listbox.curselection()
+        if not sel:
+            self._suggestion_listbox.selection_set(0)
+            return
+        new_idx = (sel[0] + delta) % size
+        self._suggestion_listbox.selection_clear(0, "end")
+        self._suggestion_listbox.selection_set(new_idx)
+        self._suggestion_listbox.see(new_idx)
+
     def _send_query(self):
         query = self.v_query.get().strip()
         if not query or not self.agent_ready:
@@ -1820,6 +2621,8 @@ class Launcher:
         self._write_stdin(query + "\n")
         self._add_to_history(query)
         self.v_query.set("")
+        self.current_run_id = None
+        self.current_run_dir = None
         self.btn_send.configure(state="disabled")
         self.cb_query.configure(state="disabled")
         self.btn_pull.configure(state="disabled")
@@ -1850,7 +2653,10 @@ class Launcher:
         self.log.configure(state="disabled")
 
     def _on_global_mousewheel(self, event):
-        w = self.root.winfo_containing(event.x_root, event.y_root)
+        try:
+            w = self.root.winfo_containing(event.x_root, event.y_root)
+        except KeyError:
+            return
         if isinstance(w, tk.Text):
             return
         while w is not None:
@@ -1951,6 +2757,132 @@ class Launcher:
         self.sop_log.see("end")
         self.sop_log.configure(state="disabled")
 
+    def _format_replay_run_label(self, run: dict) -> str:
+        updated = time.strftime("%m-%d %H:%M", time.localtime(run["updated_at"]))
+        product = run.get("product") or "unknown"
+        status = run.get("status") or "unknown"
+        title = run.get("task_title") or run.get("run_id")
+        return f"{updated} | {product} | {status} | {title}"
+
+    def _reload_replay_runs(self):
+        self._replay_runs = discover_semantic_replay_runs()
+        self._selected_replay_index = None
+        self.replay_listbox.delete(0, "end")
+        if not self._replay_runs:
+            self.v_replay_meta.set("未发现语义回放产物：artifacts/test_runs/*")
+            self._set_replay_overview(
+                "Replay Review Summary\n\nWarnings: no replay runs discovered\n"
+            )
+            self._set_replay_steps([])
+            self._set_replay_preview(
+                "还没有可观看的 replay_draft.md。\n\n"
+                "运行 Feishu Agent 任务后，Track D 会在 artifacts/test_runs/<run_id>/ "
+                "下生成 semantic_trace.json 和 replay_draft.md。"
+            )
+            return
+        for run in self._replay_runs:
+            self.replay_listbox.insert("end", self._format_replay_run_label(run))
+        self.replay_listbox.selection_set(0)
+        self._selected_replay_index = 0
+        self._on_replay_select()
+
+    def _selected_replay_run(self) -> dict | None:
+        selection = self.replay_listbox.curselection()
+        if selection:
+            self._selected_replay_index = selection[0]
+        index = self._selected_replay_index
+        if index is None and len(self._replay_runs) == 1:
+            index = 0
+            self._selected_replay_index = 0
+        if index is None:
+            return None
+        if index >= len(self._replay_runs):
+            return None
+        return self._replay_runs[index]
+
+    def _set_replay_preview(self, text: str):
+        self.replay_preview.configure(state="normal")
+        self.replay_preview.delete("1.0", "end")
+        self.replay_preview.insert("1.0", text)
+        self.replay_preview.configure(state="disabled")
+
+    def _set_replay_overview(self, text: str):
+        self.replay_overview.configure(state="normal")
+        self.replay_overview.delete("1.0", "end")
+        self.replay_overview.insert("1.0", text)
+        self.replay_overview.configure(state="disabled")
+
+    def _set_replay_step_detail(self, text: str):
+        self.replay_step_detail.configure(state="normal")
+        self.replay_step_detail.delete("1.0", "end")
+        self.replay_step_detail.insert("1.0", text)
+        self.replay_step_detail.configure(state="disabled")
+
+    def _set_replay_steps(self, steps: list[dict]):
+        self._current_replay_steps = steps
+        self.replay_step_listbox.delete(0, "end")
+        if not steps:
+            self._set_replay_step_detail("该运行没有可展示的 semantic_trace step。")
+            return
+        for ordinal, step in enumerate(steps, start=1):
+            self.replay_step_listbox.insert(
+                "end", format_replay_step_label(step, ordinal)
+            )
+        self.replay_step_listbox.selection_set(0)
+        self._on_replay_step_select()
+
+    def _on_replay_step_select(self, _event=None):
+        selection = self.replay_step_listbox.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        if index >= len(self._current_replay_steps):
+            return
+        self._set_replay_step_detail(
+            render_replay_step_detail(self._current_replay_steps[index], index + 1)
+        )
+
+    def _on_replay_select(self, _event=None):
+        run = self._selected_replay_run()
+        if run is None:
+            return
+        self.v_replay_meta.set(
+            f"run_id={run.get('run_id')} · product={run.get('product')} · "
+            f"status={run.get('status')} · steps={run.get('trace_steps', 0)} · "
+            f"screenshots={run.get('screenshots_count', 0)}"
+        )
+        steps = load_semantic_trace_steps(run.get("semantic_trace"))
+        self._set_replay_overview(render_replay_review_summary(run, steps))
+        self._set_replay_steps(steps)
+        self._set_replay_preview(load_replay_artifact_preview(run))
+
+    def _open_selected_replay_dir(self):
+        run = self._selected_replay_run()
+        if not run or not open_path_in_shell(run.get("run_dir")):
+            messagebox.showwarning("无法打开", "请选择一个存在的运行目录。")
+
+    def _open_selected_replay_draft(self):
+        run = self._selected_replay_run()
+        if not run or not open_path_in_shell(select_replay_preview_path(run)):
+            messagebox.showwarning(
+                "无法打开", "该运行没有 replay_draft.md 或 report.md。"
+            )
+
+    def _open_selected_screenshots_dir(self):
+        run = self._selected_replay_run()
+        if not run or not open_path_in_shell(run.get("screenshots_dir")):
+            messagebox.showwarning("无法打开", "该运行没有 screenshots 目录。")
+
+    def _copy_replay_review_summary(self):
+        run = self._selected_replay_run()
+        if not run:
+            messagebox.showwarning("无法复制", "请选择一个运行记录。")
+            return
+        steps = load_semantic_trace_steps(run.get("semantic_trace"))
+        self.root.clipboard_clear()
+        self.root.clipboard_append(render_replay_review_summary(run, steps))
+        self._set_status("已复制", "saved", "语义回放审阅摘要已复制到剪贴板")
+
     def _save_config(self):
         self._persist_current_forms()
         try:
@@ -1968,6 +2900,7 @@ class Launcher:
 
     def _on_close(self):
         self._stop_agent()
+        self._stop_dashboard_server()
         self.root.destroy()
 
     def run(self):
