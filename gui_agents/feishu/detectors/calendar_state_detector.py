@@ -12,10 +12,15 @@ from gui_agents.feishu.pages.registry import get_page_descriptor
 
 CALENDAR_HOME_KEYWORDS = ("日历", "会议室", "预约活动", "创建日程", "今天")
 CALENDAR_EVENT_MODAL_KEYWORDS = ("创建日程", "添加主题", "保存", "取消")
+CALENDAR_DATE_PICKER_KEYWORDS = ("2026 年", "5月", "今天")
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword and keyword in text for keyword in keywords)
+
+
+def _contains_all(text: str, keywords: tuple[str, ...]) -> bool:
+    return all(keyword and keyword in text for keyword in keywords)
 
 
 def _state_from_metadata(metadata: dict[str, Any]) -> FeishuState:
@@ -38,12 +43,33 @@ def _fallback_state(observation: dict[str, Any]) -> FeishuState:
     page_id = None
     product_state: dict[str, Any] = {}
 
-    if _contains_any(ocr_text, CALENDAR_EVENT_MODAL_KEYWORDS):
+    if _contains_all(ocr_text, ("添加主题", "保存")) and (
+        "添加日程" in ocr_text or "创建日程" not in ocr_text
+    ):
+        page_id = "calendar_quick_add_modal"
+        product_state = {
+            "quick_add_visible": True,
+            "title_input_visible": "添加主题" in ocr_text,
+            "attendee_input_visible": "添加联系人" in ocr_text,
+            "time_controls_visible": True,
+            "save_button_visible": "保存" in ocr_text,
+        }
+    elif _contains_any(ocr_text, CALENDAR_EVENT_MODAL_KEYWORDS):
         page_id = "calendar_event_modal"
         product_state = {
             "event_modal_visible": True,
             "title_input_visible": "添加主题" in ocr_text,
+            "attendee_input_visible": "添加联系人" in ocr_text,
+            "time_controls_visible": True,
             "save_button_visible": "保存" in ocr_text,
+        }
+    elif "今天" in ocr_text and _contains_any(ocr_text, CALENDAR_DATE_PICKER_KEYWORDS):
+        page_id = "calendar_date_picker"
+        product_state = {
+            "calendar_home_visible": True,
+            "date_picker_visible": True,
+            "month_picker_visible": True,
+            "today_shortcut_visible": True,
         }
     elif _contains_any(ocr_text, CALENDAR_HOME_KEYWORDS):
         page_id = "calendar_home"
@@ -61,7 +87,15 @@ def _fallback_state(observation: dict[str, Any]) -> FeishuState:
         message_input_visible=False,
         send_button_visible=False,
         search_box_visible=False,
-        modal_type="create_event" if page_id == "calendar_event_modal" else None,
+        modal_type=(
+            "create_event"
+            if page_id == "calendar_event_modal"
+            else (
+                "quick_add_event"
+                if page_id == "calendar_quick_add_modal"
+                else "date_picker" if page_id == "calendar_date_picker" else None
+            )
+        ),
         last_error_banner=None,
         product_state=product_state,
     )

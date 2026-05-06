@@ -1,0 +1,43 @@
+- `calendar_home.png`
+  - Calendar home page with the week grid, sidebar, and visible create schedule entry.
+  - Used for Calendar page-level detection and create-entry guidance.
+- `calendar_date_picker_open.png`
+  - Date picker popup opened from the header date control.
+  - Used to avoid misclassifying date navigation as event creation.
+- `calendar_create_event_modal.png`
+  - Full create-event dialog opened from the visible create schedule entry.
+  - Used for the top-level create-event path with title, attendee, time, and save controls.
+- `calendar_create_event_modal_hover.png`
+  - Full create-event dialog with hover affordance visible.
+  - Used as alternate evidence for the same full create-event surface.
+- `calendar_create_event_modal_attendee_search_results.png`
+  - Full create-event dialog after typing an attendee name, with attendee candidates visible.
+  - Used as semantic evidence for attendee search before selecting a result on the full create-event path.
+- `calendar_create_event_modal_attendees_added.png`
+  - Full create-event dialog after attendees have already been added.
+  - Used as semantic evidence for populated attendee chips on the full create-event path.
+- `calendar_create_event_modal_more_settings.png`
+  - Full create-event dialog scrolled to lower settings such as meeting, description, and reminders.
+  - Used as semantic evidence for the extended settings portion of the same create-event surface.
+- `calendar_quick_add_modal.png`
+  - Compact quick-add popup opened by clicking a time slot in the calendar grid.
+  - Used to distinguish time-slot creation from the full create-event dialog.
+- `calendar_quick_add_attendee_suggestions.png`
+  - Quick-add popup after attendee input opens suggestion results.
+  - Used to validate attendee-entry evidence on the quick-add path.
+- `calendar_event_detail_popup.png`
+  - Existing event detail popup with share and meeting controls.
+  - Used as deferred evidence for event detail/share states.
+- `calendar_share_dialog.png`
+  - Schedule sharing dialog with conversation search and send controls.
+  - Used as deferred evidence for Calendar-to-IM sharing.
+- `calendar_vc_settings_security.png`
+  - Calendar video meeting settings dialog on the security tab.
+- `calendar_vc_settings_participant_permissions.png`
+  - Calendar video meeting settings dialog on the participant permissions tab.
+- `calendar_vc_settings_recording.png`
+  - Calendar video meeting settings dialog on the recording tab.
+
+Note:
+- Calendar fixtures follow the IM naming rule: stable English snake_case image names plus same-stem JSON metadata.
+- The two creation paths are intentionally separate: `calendar_create_event_modal` is the create-entry path, while `calendar_quick_add_modal` is the time-slot path.

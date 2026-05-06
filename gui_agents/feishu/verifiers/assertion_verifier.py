@@ -302,6 +302,59 @@ class AssertionVerifier:
                 f"Calendar event modal not ready: product={state.get('product')!r}, page_type={state.get('page_type')!r}",
             )
 
+        if assertion == "calendar_quick_add_ready":
+            if state.get("product") == "calendar" and (
+                state.get("page_type")
+                in {"calendar_quick_add_modal", "calendar_quick_add_attendee"}
+                or product_state.get("quick_add_visible")
+            ):
+                evidence = ["product=calendar", f"page_type={state.get('page_type')}"]
+                evidence.append("calendar_creation_method=time_slot_quick_add")
+                if product_state.get("title_input_visible"):
+                    evidence.append("title_input_visible=True")
+                if product_state.get("save_button_visible"):
+                    evidence.append("save_button_visible=True")
+                return _success(assertion, evidence)
+            return _failure(
+                assertion,
+                f"Calendar quick-add popup not ready: product={state.get('product')!r}, page_type={state.get('page_type')!r}",
+            )
+
+        if assertion == "calendar_create_surface_ready":
+            if state.get("product") == "calendar" and (
+                state.get("page_type") == "calendar_event_modal"
+                or product_state.get("event_modal_visible")
+            ):
+                evidence = [
+                    "product=calendar",
+                    "page_type=calendar_event_modal",
+                    "calendar_creation_method=create_schedule_entry",
+                ]
+                if product_state.get("title_input_visible"):
+                    evidence.append("title_input_visible=True")
+                if product_state.get("save_button_visible"):
+                    evidence.append("save_button_visible=True")
+                return _success(assertion, evidence)
+            if state.get("product") == "calendar" and (
+                state.get("page_type")
+                in {"calendar_quick_add_modal", "calendar_quick_add_attendee"}
+                or product_state.get("quick_add_visible")
+            ):
+                evidence = [
+                    "product=calendar",
+                    f"page_type={state.get('page_type')}",
+                    "calendar_creation_method=time_slot_quick_add",
+                ]
+                if product_state.get("title_input_visible"):
+                    evidence.append("title_input_visible=True")
+                if product_state.get("save_button_visible"):
+                    evidence.append("save_button_visible=True")
+                return _success(assertion, evidence)
+            return _failure(
+                assertion,
+                f"Calendar create surface not ready: product={state.get('product')!r}, page_type={state.get('page_type')!r}",
+            )
+
         if assertion == "vc_home_ready":
             if state.get("product") == "vc" and (
                 state.get("page_type") == "vc_home"

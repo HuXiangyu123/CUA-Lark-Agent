@@ -71,7 +71,7 @@
       "product": "calendar",
       "assertions": [
         "calendar_home_ready",
-        "calendar_event_modal_ready"
+        "calendar_create_surface_ready"
       ],
       "priority": "high",
       "enabled": true,
@@ -163,7 +163,7 @@
       "product": "calendar",
       "assertions": [
         "calendar_home_ready",
-        "calendar_event_modal_ready"
+        "calendar_create_surface_ready"
       ],
       "priority": "medium",
       "enabled": true,

@@ -280,7 +280,7 @@ class TestAssertionVerifier(unittest.TestCase):
         self.assertEqual(result["failure_type"], "verification")
 
     def test_verifies_calendar_home_ready(self) -> None:
-        observation = self._calendar_observation("日历主页.png")
+        observation = self._calendar_observation("calendar_home.png")
         state = detect_calendar_state(observation)
 
         result = self.verifier.verify_assertion(
@@ -292,7 +292,7 @@ class TestAssertionVerifier(unittest.TestCase):
         self.assertIn("page_type=calendar_home", result["evidence"])
 
     def test_verifies_calendar_event_modal_ready(self) -> None:
-        observation = self._calendar_observation("点击创建日程后.png")
+        observation = self._calendar_observation("calendar_create_event_modal.png")
         state = detect_calendar_state(observation)
 
         result = self.verifier.verify_assertion(
@@ -302,6 +302,39 @@ class TestAssertionVerifier(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["assertion"], "calendar_event_modal_ready")
         self.assertIn("page_type=calendar_event_modal", result["evidence"])
+
+    def test_verifies_calendar_quick_add_ready(self) -> None:
+        observation = self._calendar_observation("calendar_quick_add_modal.png")
+        state = detect_calendar_state(observation)
+
+        result = self.verifier.verify_assertion(
+            "calendar_quick_add_ready", state, observation
+        )
+
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["assertion"], "calendar_quick_add_ready")
+        self.assertIn(
+            "calendar_creation_method=time_slot_quick_add", result["evidence"]
+        )
+
+    def test_verifies_calendar_create_surface_for_either_creation_path(self) -> None:
+        for filename, expected_method in (
+            ("calendar_create_event_modal.png", "create_schedule_entry"),
+            ("calendar_quick_add_modal.png", "time_slot_quick_add"),
+        ):
+            with self.subTest(filename=filename):
+                observation = self._calendar_observation(filename)
+                state = detect_calendar_state(observation)
+
+                result = self.verifier.verify_assertion(
+                    "calendar_create_surface_ready", state, observation
+                )
+
+                self.assertTrue(result["passed"])
+                self.assertIn(
+                    f"calendar_creation_method={expected_method}",
+                    result["evidence"],
+                )
 
     def test_verifies_calendar_home_not_ready_with_wrong_product(self) -> None:
         observation = self._vc_observation("会议主页面.png")

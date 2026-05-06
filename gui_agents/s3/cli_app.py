@@ -44,6 +44,21 @@ def _print(*args, **kwargs) -> None:
     builtins.print(*[_safe_console_text(arg) for arg in args], **kwargs)
 
 
+def _execute_action_code(exec_code: str) -> dict:
+    """Execute a generated action in a shared namespace.
+
+    A dedicated scope keeps helper defs/imports visible to nested functions
+    created by the same generated snippet.
+    """
+
+    scope = {
+        "__builtins__": builtins.__dict__,
+        "__name__": "__agent_exec__",
+    }
+    exec(exec_code, scope, scope)
+    return scope
+
+
 class _TeeTextStream:
     def __init__(self, primary, log_path: str):
         self.primary = primary
@@ -54,7 +69,8 @@ class _TeeTextStream:
     def write(self, text):
         self.primary.write(text)
         self.log.write(str(text))
-        self.flush()
+        if "\n" in str(text):
+            self.flush()
         return len(text)
 
     def flush(self):
@@ -398,7 +414,7 @@ def run_agent(
                     time.sleep(settle_pre)
 
                 try:
-                    exec(exec_code)
+                    _execute_action_code(exec_code)
                 except Exception as exc:
                     final_status = "failed"
                     final_failure_reason = repr(exc)

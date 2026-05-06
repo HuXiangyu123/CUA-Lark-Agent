@@ -1,6 +1,7 @@
 import copy
 import json
 import tempfile
+import tkinter as tk
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -363,6 +364,36 @@ class LauncherEnvRoutingTest(unittest.TestCase):
         self.assertEqual(persisted["failure_type"], "manual_stop")
         self.assertIn("test manual stop", replay)
         self.assertIn("Manual Stop", report)
+
+    def test_launcher_main_area_uses_resizable_horizontal_split(self) -> None:
+        cfg = self._fresh_config()
+        cfg["first_run_completed"] = True
+        app = None
+        try:
+            with (
+                patch.object(launcher, "load_config", return_value=cfg),
+                patch.object(
+                    launcher.Launcher,
+                    "_load_command_history",
+                    return_value=list(launcher.CANDIDATE_COMMANDS[:3]),
+                ),
+            ):
+                app = launcher.Launcher()
+                app.root.withdraw()
+                app.root.update_idletasks()
+
+            self.assertIsInstance(app.main_paned, tk.PanedWindow)
+            self.assertEqual(app.main_paned.cget("orient"), "horizontal")
+            pane_names = tuple(str(pane) for pane in app.main_paned.panes())
+            self.assertEqual(len(pane_names), 2)
+            self.assertIn(str(app.left_pane), pane_names)
+            self.assertIn(str(app.right_pane), pane_names)
+            self.assertGreater(app.main_paned.sash_coord(0)[0], 0)
+        except tk.TclError as exc:
+            self.skipTest(f"Tk unavailable for launcher layout test: {exc}")
+        finally:
+            if app is not None:
+                app.root.destroy()
 
 
 if __name__ == "__main__":

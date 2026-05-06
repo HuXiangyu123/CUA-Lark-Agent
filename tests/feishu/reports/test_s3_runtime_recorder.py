@@ -58,6 +58,7 @@ class TestS3RuntimeRecorder(unittest.TestCase):
             self.assertTrue((run_dir / "report.md").exists())
             self.assertTrue((run_dir / "actions.jsonl").exists())
             self.assertTrue((run_dir / "runtime_state.json").exists())
+            self.assertTrue((run_dir / "runtime_stdout.log").exists())
             self.assertTrue((run_dir / "replay_draft.md").exists())
             self.assertEqual(recorder.run_dir(), str(run_dir))
             self.assertEqual(
@@ -92,6 +93,25 @@ class TestS3RuntimeRecorder(unittest.TestCase):
 
             self.assertEqual(sync_mock.call_count, 1)
             self.assertEqual(sync_mock.call_args.args[0], "action_001")
+
+    def test_record_observation_uses_lightweight_live_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recorder = S3RuntimeRecorder(artifact_root=tmpdir)
+            runtime = recorder.start("打开日历主页")
+
+            with patch.object(
+                recorder.report_builder,
+                "build_markdown",
+                wraps=recorder.report_builder.build_markdown,
+            ) as markdown_mock:
+                recorder.record_observation(1, {"screenshot": b"png"})
+
+            run_dir = Path(tmpdir) / runtime["run_id"]
+            self.assertEqual(markdown_mock.call_count, 0)
+            self.assertTrue((run_dir / "summary.json").exists())
+            self.assertTrue((run_dir / "runtime_state.json").exists())
+            summary = json.loads((run_dir / "summary.json").read_text("utf-8"))
+            self.assertEqual(summary["artifact_write_reason"], "observation_001")
 
     def test_record_action_derives_semantic_step_from_observation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

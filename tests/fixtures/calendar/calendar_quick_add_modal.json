@@ -1,0 +1,64 @@
+{
+  "fixture_id": "calendar_quick_add_modal",
+  "image_file": "calendar_quick_add_modal.png",
+  "product": "calendar",
+  "page_id": "calendar_quick_add_modal",
+  "page_type": "calendar_quick_add_modal",
+  "display_name": "Feishu Calendar Quick Add Modal",
+  "scenario": "Quick add event popup opened from clicking a time slot on the calendar grid.",
+  "expected_state": {
+    "product": "calendar",
+    "page_type": "calendar_quick_add_modal",
+    "message_input_visible": false,
+    "send_button_visible": false,
+    "search_box_visible": false,
+    "modal_type": "quick_add_event",
+    "last_error_banner": null
+  },
+  "product_state": {
+    "quick_add_visible": true,
+    "title_input_visible": true,
+    "attendee_input_visible": false,
+    "time_controls_visible": true,
+    "save_button_visible": true,
+    "selected_time_slot_visible": true
+  },
+  "visible_targets": [
+    "title_input",
+    "time_range",
+    "save_button"
+  ],
+  "text_anchors": [
+    {
+      "text": "添加日程",
+      "role": "dialog_title",
+      "required": true
+    },
+    {
+      "text": "添加主题",
+      "role": "title_placeholder",
+      "required": true
+    },
+    {
+      "text": "保存",
+      "role": "save_button",
+      "required": true
+    }
+  ],
+  "key_regions": {
+    "title_input": {
+      "role": "event_title_input",
+      "visible_placeholder": "添加主题"
+    },
+    "time_range": {
+      "role": "event_time_range",
+      "description": "selected time slot editor"
+    },
+    "save_button": {
+      "role": "save_event_button",
+      "visible_text": "保存"
+    }
+  },
+  "annotation_status": "draft",
+  "review_status": "unreviewed"
+}

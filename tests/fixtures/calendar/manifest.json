@@ -1,0 +1,27 @@
+{
+  "suite_id": "feishu_calendar_semantic",
+  "page_id": "calendar_home",
+  "files": [
+    "calendar_home.png",
+    "calendar_date_picker_open.png",
+    "calendar_create_event_modal.png",
+    "calendar_create_event_modal_hover.png",
+    "calendar_create_event_modal_attendee_search_results.png",
+    "calendar_create_event_modal_attendees_added.png",
+    "calendar_create_event_modal_more_settings.png",
+    "calendar_quick_add_modal.png",
+    "calendar_quick_add_attendee_suggestions.png",
+    "calendar_event_detail_popup.png",
+    "calendar_share_dialog.png",
+    "calendar_vc_settings_security.png",
+    "calendar_vc_settings_participant_permissions.png",
+    "calendar_vc_settings_recording.png"
+  ],
+  "purpose": "Calendar semantic fixture set for Track ABCD agentic page detection, guidance, and report evidence.",
+  "notes": [
+    "Use English snake_case filenames matching the IM fixture convention.",
+    "Use semantic metadata only; do not store machine-specific visual measurements or scoring fields.",
+    "Keep full create-event modal and time-slot quick-add popup as separate states so reports can explain which creation path the agent used.",
+    "Additional create-event samples can capture attendee search results, filled attendees, or lower settings, but they remain semantic evidence for the same modal family."
+  ]
+}

@@ -194,6 +194,10 @@ def _build_state_summary(state: FeishuState) -> str:
         parts.append("calendar_home_visible")
     if product_state.get("event_modal_visible"):
         parts.append("calendar_event_modal_visible")
+    if product_state.get("quick_add_visible"):
+        parts.append("calendar_quick_add_visible")
+    if product_state.get("date_picker_visible"):
+        parts.append("calendar_date_picker_visible")
     if product_state.get("create_event_button_visible"):
         parts.append("create_event_button_visible")
     if product_state.get("title_input_visible"):
@@ -492,19 +496,32 @@ def route_feishu_tools(
                 "On Calendar home, prefer the visible Create Schedule control or the text anchors in the screenshot, then re-check the screen before the next action."
             )
             hints.append(
-                "If the user asked to create an event, act through the visible Calendar controls rather than assuming a scripted home->modal sequence."
+                "If the user asked to create an event, choose either the visible Create Schedule entry or a specific time slot based on the instruction, then let the next screenshot determine whether the full create dialog or quick-add popup is open."
             )
         elif page_type == "calendar_event_modal":
             next_step_focus = "calendar_event_modal_controls"
             hints.append(
-                "The create-event modal is visible. Use the visible title field, attendee field, time controls, and Save button according to the current screenshot."
+                "The full create-event modal is visible from the Create Schedule entry. Use the visible title field, attendee field, time controls, and Save button according to the current screenshot."
             )
             hints.append(
                 "Do not rely on precomputed coordinates or a fixed step chain; re-check the modal state before typing or saving."
             )
+        elif page_type in {"calendar_quick_add_modal", "calendar_quick_add_attendee"}:
+            next_step_focus = "calendar_quick_add_controls"
+            hints.append(
+                "The time-slot quick-add popup is visible. Treat this as the grid-click creation path, not the full Create Schedule dialog."
+            )
+            hints.append(
+                "Use the visible quick-add title/time controls first; only use attendee controls if they are visible in the current screenshot."
+            )
+        elif page_type == "calendar_date_picker":
+            next_step_focus = "calendar_date_picker_controls"
+            hints.append(
+                "A date picker is open from the Calendar header. This is date navigation, not event creation; choose a visible date or close/re-check before creating an event."
+            )
         else:
             hints.append(
-                "First classify whether Calendar home or the create-event modal is visible, then use the visible text controls from the current screenshot."
+                "First classify whether Calendar home, the full create-event modal, the time-slot quick-add popup, or a date picker is visible, then use only the visible controls from the current screenshot."
             )
 
     elif page_type == "chat_search_panel":

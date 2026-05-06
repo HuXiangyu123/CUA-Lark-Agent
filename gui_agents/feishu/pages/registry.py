@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from gui_agents.feishu.contracts import PageDescriptor
 
+from .calendar_date_picker import CALENDAR_DATE_PICKER_DESCRIPTOR
 from .calendar_event_modal import CALENDAR_EVENT_MODAL_DESCRIPTOR
 from .calendar_home import CALENDAR_HOME_DESCRIPTOR
+from .calendar_quick_add_modal import CALENDAR_QUICK_ADD_MODAL_DESCRIPTOR
 from .base_browser_table import BASE_BROWSER_TABLE_DESCRIPTOR
 from .base_home import BASE_HOME_DESCRIPTOR
 from .base_new_menu import BASE_NEW_MENU_DESCRIPTOR
@@ -33,6 +35,8 @@ from .vc_start_preview import VC_START_PREVIEW_DESCRIPTOR
 _DESCRIPTORS = (
     CALENDAR_HOME_DESCRIPTOR,
     CALENDAR_EVENT_MODAL_DESCRIPTOR,
+    CALENDAR_QUICK_ADD_MODAL_DESCRIPTOR,
+    CALENDAR_DATE_PICKER_DESCRIPTOR,
     BASE_HOME_DESCRIPTOR,
     BASE_NEW_MENU_DESCRIPTOR,
     BASE_TEMPLATE_GALLERY_DESCRIPTOR,

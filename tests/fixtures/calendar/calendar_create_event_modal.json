@@ -1,35 +1,39 @@
 {
-  "fixture_id": "calendar_quick_add_attendee",
-  "image_file": "点击时间添加会议安排_添加参会人.png",
+  "fixture_id": "calendar_home_after_create_click",
+  "image_file": "calendar_create_event_modal.png",
   "product": "calendar",
-  "page_id": "calendar_quick_add_modal",
-  "page_type": "calendar_quick_add_attendee",
-  "display_name": "Feishu Calendar Quick Add Modal With Attendee Suggestions",
-  "scenario": "Quick add event popup with attendee input suggestion dropdown visible.",
+  "page_id": "calendar_event_modal",
+  "page_type": "calendar_event_modal",
+  "display_name": "Feishu Calendar Event Modal",
+  "scenario": "Calendar create-event modal after clicking the create schedule entry.",
   "expected_state": {
     "product": "calendar",
-    "page_type": "calendar_quick_add_attendee",
+    "page_type": "calendar_event_modal",
     "message_input_visible": false,
     "send_button_visible": false,
     "search_box_visible": false,
-    "modal_type": "quick_add_event",
+    "modal_type": "create_event",
     "last_error_banner": null
   },
   "product_state": {
-    "quick_add_visible": true,
+    "event_modal_visible": true,
     "title_input_visible": true,
     "attendee_input_visible": true,
-    "attendee_suggestions_visible": true,
     "time_controls_visible": true,
     "save_button_visible": true
   },
   "visible_targets": [
     "title_input",
     "attendee_input",
-    "attendee_suggestion_list",
+    "time_range",
     "save_button"
   ],
   "text_anchors": [
+    {
+      "text": "创建日程",
+      "role": "dialog_title",
+      "required": true
+    },
     {
       "text": "添加主题",
       "role": "title_placeholder",
@@ -44,6 +48,11 @@
       "text": "保存",
       "role": "save_button",
       "required": true
+    },
+    {
+      "text": "取消",
+      "role": "cancel_button",
+      "required": true
     }
   ],
   "key_regions": {
@@ -55,9 +64,9 @@
       "role": "attendee_input",
       "visible_placeholder": "添加联系人、群或邮箱"
     },
-    "attendee_suggestion_list": {
-      "role": "attendee_suggestion_list",
-      "description": "dropdown suggestion panel"
+    "time_range": {
+      "role": "event_time_range",
+      "description": "event time controls"
     },
     "save_button": {
       "role": "save_event_button",

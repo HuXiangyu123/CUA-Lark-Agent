@@ -84,7 +84,7 @@
       "instruction": "打开日历，创建明天下午 2 点的日程，标题为“项目同步”，并邀请张三",
       "assertions": [
         "calendar_home_ready",
-        "calendar_event_modal_ready"
+        "calendar_create_surface_ready"
       ],
       "priority": "high",
       "enabled": true,
@@ -285,7 +285,7 @@
       "instruction": "在云文档窗口打开“项目周报”，根据文档中可见的会议或计划信息，切换到日历窗口创建一个标题包含“项目周报”的日程，并确认日历创建日程弹窗或日历主页可见",
       "assertions": [
         "calendar_home_ready",
-        "calendar_event_modal_ready"
+        "calendar_create_surface_ready"
       ],
       "priority": "medium",
       "enabled": true,

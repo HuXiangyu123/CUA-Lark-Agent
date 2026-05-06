@@ -44,7 +44,8 @@ Current project state:
   Mail is deferred.
 - All 5 products now have verifier coverage. IM, Docs, Base, VC have deep
   assertion branches; Calendar has `calendar_home_ready` and
-  `calendar_event_modal_ready`.
+  `calendar_event_modal_ready`, `calendar_quick_add_ready`, and
+  `calendar_create_surface_ready`.
 - Batch evaluation has an implementation through `evaluation_aggregator.py`,
   `build_feishu_eval_report.py`, `evaluation_dashboard.html`, and live E2E
   evidence packaging.
@@ -56,7 +57,7 @@ Current project state:
 - 199 startup tests pass (up from 170 in the previous audit).
 - Calendar NL parser now implemented — `_parse_calendar_instruction()` covers
   create_event and view_today intents with `calendar_home_ready` and
-  `calendar_event_modal_ready` assertions.
+  `calendar_create_surface_ready` assertions.
 - The largest remaining acceptance gap is producing enough real Feishu desktop
   run artifacts, not domain knowledge representation or evidence packaging.
 
@@ -121,7 +122,7 @@ Changes since last audit: Calendar Create event verifier ✅ (was ❌).
 | Example | Parser | Route | Verify | Status |
 | --- | --- | --- | --- | --- |
 | Create a document named "项目周报" and enter "2026年Q2项目进展" | ✅ Docs structured testcase | ✅ Docs router | ✅ title/body/editor assertions | Complete at unit level |
-| Open Calendar, create tomorrow 2 PM meeting, invite 张三 | ✅ Calendar guidance testcase | ✅ Calendar tool guidance | ✅ `calendar_home_ready`, `calendar_event_modal_ready` | Complete at unit level |
+| Open Calendar, create tomorrow 2 PM meeting, invite 张三 | ✅ Calendar guidance testcase | ✅ Calendar tool guidance | ✅ `calendar_home_ready`, `calendar_create_surface_ready` | Complete at unit level |
 | Search "测试群" in IM, send "Hello World", confirm sent | ✅ IM parser | ✅ IM router/helpers | ✅ `message_sent` | Complete at unit level |
 | Start a video meeting and verify meeting active | ✅ VC semantic guidance testcase | ✅ VC helper route | ✅ VC assertions | Complete at unit level |
 | Create a Base table | ✅ Base semantic guidance testcase | ✅ Base router | ✅ Base ready assertions | Complete at semantic/unit level |

@@ -259,7 +259,10 @@ def _extract_calendar_attendee(instruction: str) -> str | None:
 def _parse_calendar_instruction(instruction: str, quoted_texts: list[str]) -> TestCase:
     if any(keyword in instruction for keyword in ("创建", "新建", "添加")):
         intent = "create_event"
-        assertions: list[str] = ["calendar_home_ready", "calendar_event_modal_ready"]
+        assertions: list[str] = [
+            "calendar_home_ready",
+            "calendar_create_surface_ready",
+        ]
     elif any(
         keyword in instruction for keyword in ("查看", "查看今日", "今天", "今日日程")
     ):
