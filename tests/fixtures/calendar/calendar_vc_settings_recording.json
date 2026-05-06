@@ -1,14 +1,14 @@
 {
-  "fixture_id": "calendar_vc_settings_security",
-  "image_file": "视频会议设置.png",
+  "fixture_id": "calendar_vc_settings_recording",
+  "image_file": "calendar_vc_settings_recording.png",
   "product": "calendar",
   "page_id": "calendar_vc_settings",
-  "page_type": "calendar_vc_settings_security",
-  "display_name": "Feishu Calendar VC Settings Security",
-  "scenario": "Video meeting settings dialog on the security tab.",
+  "page_type": "calendar_vc_settings_recording",
+  "display_name": "Feishu Calendar VC Settings Recording",
+  "scenario": "Video meeting settings dialog on the recording tab.",
   "expected_state": {
     "product": "calendar",
-    "page_type": "calendar_vc_settings_security",
+    "page_type": "calendar_vc_settings_recording",
     "message_input_visible": false,
     "send_button_visible": false,
     "search_box_visible": false,
@@ -17,9 +17,9 @@
   },
   "product_state": {
     "video_meeting_settings_visible": true,
-    "security_tab_visible": true,
+    "security_tab_visible": false,
     "meeting_permissions_visible": false,
-    "recording_tab_visible": false,
+    "recording_tab_visible": true,
     "confirm_button_visible": true
   },
   "visible_targets": [
@@ -35,13 +35,13 @@
       "required": true
     },
     {
-      "text": "安全",
+      "text": "录制",
       "role": "sidebar_tab",
       "required": true
     },
     {
-      "text": "参会人权限",
-      "role": "sidebar_tab",
+      "text": "会议自动云录制",
+      "role": "setting_item",
       "required": true
     },
     {

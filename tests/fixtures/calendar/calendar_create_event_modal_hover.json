@@ -1,6 +1,6 @@
 {
   "fixture_id": "calendar_event_modal_hover",
-  "image_file": "创建日程悬停.png",
+  "image_file": "calendar_create_event_modal_hover.png",
   "product": "calendar",
   "page_id": "calendar_event_modal",
   "page_type": "calendar_event_modal",

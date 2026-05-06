@@ -1,14 +1,14 @@
 {
-  "fixture_id": "calendar_vc_settings_participant_permissions",
-  "image_file": "视频会议设置2.png",
+  "fixture_id": "calendar_vc_settings_security",
+  "image_file": "calendar_vc_settings_security.png",
   "product": "calendar",
   "page_id": "calendar_vc_settings",
-  "page_type": "calendar_vc_settings_participant_permissions",
-  "display_name": "Feishu Calendar VC Settings Participant Permissions",
-  "scenario": "Video meeting settings dialog on the participant permissions tab.",
+  "page_type": "calendar_vc_settings_security",
+  "display_name": "Feishu Calendar VC Settings Security",
+  "scenario": "Video meeting settings dialog on the security tab.",
   "expected_state": {
     "product": "calendar",
-    "page_type": "calendar_vc_settings_participant_permissions",
+    "page_type": "calendar_vc_settings_security",
     "message_input_visible": false,
     "send_button_visible": false,
     "search_box_visible": false,
@@ -17,8 +17,8 @@
   },
   "product_state": {
     "video_meeting_settings_visible": true,
-    "security_tab_visible": false,
-    "meeting_permissions_visible": true,
+    "security_tab_visible": true,
+    "meeting_permissions_visible": false,
     "recording_tab_visible": false,
     "confirm_button_visible": true
   },
@@ -35,13 +35,13 @@
       "required": true
     },
     {
-      "text": "参会人权限",
+      "text": "安全",
       "role": "sidebar_tab",
       "required": true
     },
     {
-      "text": "会中聊天",
-      "role": "permission_item",
+      "text": "参会人权限",
+      "role": "sidebar_tab",
       "required": true
     },
     {

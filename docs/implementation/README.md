@@ -37,6 +37,8 @@ These records describe the current agentic route or current guardrails:
 | `dashboard_report_visual_iteration_2026-05-06.md` | Per-run report visual refresh, clickable dashboard rows, and compact run/task labels. |
 | `report_metrics_defaults_and_icon_report_2026-05-06.md` | Stable process-quality metric defaults, runtime reflection capture, and icon-led per-run report page. |
 | `runtime_incremental_artifacts_and_abort_2026-05-06.md` | Incremental run artifacts, runtime stdout log, finalize error files, and launcher manual-abort evidence. |
+| `calendar_fixture_normalization_and_runtime_logging_2026-05-06.md` | Calendar fixture English normalization, quick-add/full-create separation, and lighter live runtime logging. |
+| `calendar_new_fixture_practice_2026-05-06.md` | Practice record for classifying and configuring newly added Calendar screenshots. |
 | `live_e2e_evidence_pack_2026-05-06.md` | Live E2E artifact completeness and acceptance evidence pack. |
 | `cross_window_eval_cases_2026-05-06.md` | Cross-window eval suite cases for VLM-driven product handoffs. |
 | `launcher_semantic_replay_viewer_2026-05-06.md` | Launcher tab for viewing semantic replay artifacts without executing replay. |

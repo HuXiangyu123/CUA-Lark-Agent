@@ -43,11 +43,22 @@ Likely cause:
   deliver paste reliably even though clipboard-based Unicode is the correct
   strategy.
 
+Follow-up runtime failure after switching to Win32 paste:
+
+- Generated helper functions inside the action snippet were valid.
+- `gui_agents/s3/cli_app.py` executed the snippet with plain `exec(...)` inside
+  a function scope.
+- Nested helper calls inside the generated snippet could therefore fail with
+  `NameError(...)` because defs/imports were not guaranteed to share one
+  namespace.
+
 ## Manual Plan
 
 Target files:
 
+- `gui_agents/s3/cli_app.py`
 - `gui_agents/s3/agents/grounding_feishu.py`
+- `tests/feishu/reports/test_s3_cli_recorder_integration.py`
 - `tests/feishu/tooling/test_feishu_runtime_prior_tools.py`
 - `docs/implementation/feishu_unicode_clipboard_input_2026-05-06.md`
 
@@ -58,6 +69,8 @@ Depends on:
 
 Outputs:
 
+- A shared exec namespace helper in `cli_app.py` so generated helper defs remain
+  visible inside the same action snippet.
 - A shared generated-code paste block that:
   - writes Unicode text to clipboard,
   - verifies clipboard content when possible,
@@ -96,5 +109,7 @@ Executed on 2026-05-06:
   - Result: passed, 9 tests.
 - `python -m unittest tests.feishu.runtime.test_feishu_agentic_helpers tests.feishu.tooling.test_tool_router -v`
   - Result: passed, 18 tests.
+- `python -m unittest tests.feishu.reports.test_s3_cli_recorder_integration -v`
+  - Result: passed, 3 tests, including nested-helper exec scope coverage.
 - `python scripts/run_ci_checks.py`
   - Result: passed.

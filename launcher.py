@@ -836,6 +836,10 @@ class Launcher:
         self.cfg = load_config()
         self.command_history = self._load_command_history()
         self._full_command_history = list(self.command_history)
+        self.main_paned: tk.PanedWindow | None = None
+        self.left_pane: ttk.Frame | None = None
+        self.right_pane: ttk.Frame | None = None
+        self._main_sash_initialized = False
 
         if not self.cfg.get("first_run_completed"):
             self.cfg["detected_environment"] = detect_environment()
@@ -1081,16 +1085,24 @@ class Launcher:
         )
         self.btn_start.pack(side="left")
 
-        main_content = ttk.Frame(outer, style="App.TFrame")
-        main_content.grid(row=1, column=0, sticky="nsew")
-        main_content.columnconfigure(0, weight=4)
-        main_content.columnconfigure(1, weight=6)
-        main_content.rowconfigure(0, weight=1)
+        self.main_paned = tk.PanedWindow(
+            outer,
+            orient=tk.HORIZONTAL,
+            bg=self.colors["bg"],
+            bd=0,
+            relief="flat",
+            sashwidth=10,
+            sashrelief="flat",
+            showhandle=False,
+            opaqueresize=True,
+        )
+        self.main_paned.grid(row=1, column=0, sticky="nsew")
+        self.main_paned.bind("<Configure>", self._maybe_initialize_main_split, add="+")
 
-        left_pane = ttk.Frame(main_content, style="App.TFrame")
-        left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 24))
+        left_pane = ttk.Frame(self.main_paned, style="App.TFrame")
         left_pane.columnconfigure(0, weight=1)
         left_pane.rowconfigure(1, weight=1)
+        self.left_pane = left_pane
 
         switcher = tk.Frame(left_pane, bg=self.colors["border"], padx=4, pady=4)
         switcher.grid(row=0, column=0, sticky="w", pady=(0, 16))
@@ -1187,11 +1199,14 @@ class Launcher:
         tab_sop.bind("<Button-1>", switch_to_sop)
         tab_replay.bind("<Button-1>", switch_to_replay)
 
-        right_pane = ttk.Frame(main_content, style="App.TFrame")
-        right_pane.grid(row=0, column=1, sticky="nsew")
+        right_pane = ttk.Frame(self.main_paned, style="App.TFrame")
         right_pane.columnconfigure(0, weight=1)
         right_pane.rowconfigure(2, weight=1)
+        self.right_pane = right_pane
         self._build_right_pane(right_pane)
+        self.main_paned.add(left_pane, minsize=360)
+        self.main_paned.add(right_pane, minsize=480)
+        self.root.after_idle(self._maybe_initialize_main_split)
 
         footer = ttk.Frame(outer, style="App.TFrame")
         footer.grid(row=2, column=0, sticky="ew", pady=(16, 0))
@@ -1555,6 +1570,32 @@ class Launcher:
             state="disabled",
         )
         self.btn_send.grid(row=0, column=2)
+
+    def _maybe_initialize_main_split(self, _event=None):
+        if self._main_sash_initialized or self.main_paned is None:
+            return
+        if len(self.main_paned.panes()) < 2:
+            return
+
+        total_width = self.main_paned.winfo_width()
+        if total_width <= 1:
+            self.root.after(50, self._maybe_initialize_main_split)
+            return
+
+        desired_left = int(total_width * 0.42)
+        min_left = 360
+        min_right = 520
+        sash_x = max(min_left, min(desired_left, total_width - min_right))
+        if sash_x <= 0:
+            return
+
+        try:
+            sash_y = self.main_paned.sash_coord(0)[1]
+            self.main_paned.sash_place(0, sash_x, sash_y)
+        except tk.TclError:
+            self.root.after(50, self._maybe_initialize_main_split)
+            return
+        self._main_sash_initialized = True
 
     def _build_sop_tab(self, parent):
         parent.columnconfigure(0, weight=1)

@@ -182,6 +182,8 @@ class S3RuntimeRecorder:
         semantic_trace: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         run_dir = self.artifact_manager.ensure_run_dirs(run_id)
+        runtime_stdout = run_dir / "runtime_stdout.log"
+        runtime_stdout.touch(exist_ok=True)
         screenshots = []
         if self.runtime is not None and isinstance(
             self.runtime.get("screenshots"), list
@@ -199,7 +201,7 @@ class S3RuntimeRecorder:
             ),
             "replay_draft": str(run_dir / "replay_draft.md"),
             "runtime_state": str(run_dir / "runtime_state.json"),
-            "runtime_stdout": str(run_dir / "runtime_stdout.log"),
+            "runtime_stdout": str(runtime_stdout),
             "artifact_error": str(run_dir / "artifact_error.txt"),
             "screenshots": screenshots,
             "screenshots_count": len(screenshots),
@@ -334,6 +336,64 @@ class S3RuntimeRecorder:
             print(f"FEISHU_TRACK_D_WARNING: artifact persistence failed: {exc!r}")
             return self._last_artifact_paths or None
 
+    def _sync_live_state(self, reason: str) -> dict[str, str] | None:
+        """Persist cheap live artifacts without rebuilding Markdown reports."""
+        if self.runtime is None:
+            return None
+        run_id = str(self.runtime["run_id"])
+        paths = dict(self._last_artifact_paths)
+        try:
+            semantic_trace = self.report_builder.build_semantic_trace(self.runtime)
+        except Exception as exc:
+            self._write_artifact_error(
+                run_id,
+                f"{_now_iso()} semantic trace generation failed during {reason}: {exc!r}\n",
+            )
+            semantic_trace = []
+
+        manifest = self._artifact_manifest(run_id, semantic_trace=semantic_trace)
+        try:
+            summary = self.report_builder.build_summary(None, self.runtime)
+        except Exception as exc:
+            self._write_artifact_error(
+                run_id,
+                f"{_now_iso()} summary generation failed during {reason}: {exc!r}\n",
+            )
+            summary = self._fallback_summary(run_id, reason=reason, error=exc)
+
+        summary["artifact_manifest"] = manifest
+        summary["artifact_write_reason"] = reason
+
+        try:
+            paths["summary"] = self.artifact_manager.write_json(
+                run_id, "summary.json", summary
+            )
+            paths["actions"] = self.artifact_manager.write_actions_jsonl(
+                run_id, self.runtime.get("action_logs", [])
+            )
+            paths["runtime_state"] = self.artifact_manager.write_json(
+                run_id, "runtime_state.json", self.runtime
+            )
+            paths["semantic_trace"] = self.artifact_manager.write_json(
+                run_id,
+                "semantic_trace.json",
+                semantic_trace,
+            )
+            paths["runtime_stdout"] = manifest["runtime_stdout"]
+            paths["run_dir"] = manifest["run_dir"]
+            self._last_artifact_paths = paths
+            return paths
+        except Exception as exc:
+            try:
+                self._write_artifact_error(
+                    run_id,
+                    f"{_now_iso()} live artifact persistence failed during {reason}: {exc!r}\n",
+                )
+            except Exception:
+                pass
+            print(f"FEISHU_TRACK_D_WARNING: live artifact persistence failed: {exc!r}")
+            return self._last_artifact_paths or None
+
     def record_observation(self, step_index: int, observation: dict[str, Any]) -> None:
         if self.runtime is None:
             return
@@ -341,7 +401,7 @@ class S3RuntimeRecorder:
         self._record_anomaly_events(step_index, observation)
         screenshot = observation.get("screenshot")
         if not isinstance(screenshot, bytes):
-            self._sync_artifacts(f"observation_{step_index:03d}")
+            self._sync_live_state(f"observation_{step_index:03d}")
             return
         try:
             path = self.artifact_manager.write_screenshot(
@@ -352,7 +412,7 @@ class S3RuntimeRecorder:
             self.runtime["screenshots"].append(path)
         except Exception as exc:
             print(f"FEISHU_TRACK_D_WARNING: screenshot persistence failed: {exc!r}")
-        self._sync_artifacts(f"observation_{step_index:03d}")
+        self._sync_live_state(f"observation_{step_index:03d}")
 
     def _record_anomaly_events(
         self,

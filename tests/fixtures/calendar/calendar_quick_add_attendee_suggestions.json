@@ -1,14 +1,14 @@
 {
-  "fixture_id": "calendar_quick_add_modal",
-  "image_file": "点击时间添加会议安排.png",
+  "fixture_id": "calendar_quick_add_attendee",
+  "image_file": "calendar_quick_add_attendee_suggestions.png",
   "product": "calendar",
   "page_id": "calendar_quick_add_modal",
-  "page_type": "calendar_quick_add_modal",
-  "display_name": "Feishu Calendar Quick Add Modal",
-  "scenario": "Quick add event popup opened from clicking a time slot on the calendar grid.",
+  "page_type": "calendar_quick_add_attendee",
+  "display_name": "Feishu Calendar Quick Add Modal With Attendee Suggestions",
+  "scenario": "Quick add event popup with attendee input suggestion dropdown visible.",
   "expected_state": {
     "product": "calendar",
-    "page_type": "calendar_quick_add_modal",
+    "page_type": "calendar_quick_add_attendee",
     "message_input_visible": false,
     "send_button_visible": false,
     "search_box_visible": false,
@@ -18,25 +18,26 @@
   "product_state": {
     "quick_add_visible": true,
     "title_input_visible": true,
-    "attendee_input_visible": false,
+    "attendee_input_visible": true,
+    "attendee_suggestions_visible": true,
     "time_controls_visible": true,
-    "save_button_visible": true,
-    "selected_time_slot_visible": true
+    "save_button_visible": true
   },
   "visible_targets": [
     "title_input",
-    "time_range",
+    "attendee_input",
+    "attendee_suggestion_list",
     "save_button"
   ],
   "text_anchors": [
     {
-      "text": "添加日程",
-      "role": "dialog_title",
+      "text": "添加主题",
+      "role": "title_placeholder",
       "required": true
     },
     {
-      "text": "添加主题",
-      "role": "title_placeholder",
+      "text": "添加联系人、群或邮箱",
+      "role": "attendee_placeholder",
       "required": true
     },
     {
@@ -50,9 +51,13 @@
       "role": "event_title_input",
       "visible_placeholder": "添加主题"
     },
-    "time_range": {
-      "role": "event_time_range",
-      "description": "selected time slot editor"
+    "attendee_input": {
+      "role": "attendee_input",
+      "visible_placeholder": "添加联系人、群或邮箱"
+    },
+    "attendee_suggestion_list": {
+      "role": "attendee_suggestion_list",
+      "description": "dropdown suggestion panel"
     },
     "save_button": {
       "role": "save_event_button",

@@ -1,0 +1,91 @@
+{
+  "fixture_id": "calendar_event_modal_attendee_search_results",
+  "image_file": "calendar_create_event_modal_attendee_search_results.png",
+  "product": "calendar",
+  "page_id": "calendar_event_modal",
+  "page_type": "calendar_event_modal",
+  "display_name": "Feishu Calendar Event Modal Attendee Search Results",
+  "scenario": "Full create-event modal with a filled title and attendee search results visible after typing an attendee name.",
+  "expected_state": {
+    "product": "calendar",
+    "page_type": "calendar_event_modal",
+    "message_input_visible": false,
+    "send_button_visible": false,
+    "search_box_visible": false,
+    "modal_type": "create_event",
+    "last_error_banner": null
+  },
+  "product_state": {
+    "event_modal_visible": true,
+    "title_input_filled": true,
+    "attendee_input_visible": true,
+    "attendee_search_text_present": true,
+    "attendee_suggestions_visible": true,
+    "time_controls_visible": true,
+    "meeting_settings_visible": true,
+    "save_button_visible": true
+  },
+  "visible_targets": [
+    "title_input",
+    "attendee_input",
+    "attendee_suggestion_list",
+    "meeting_settings",
+    "save_button"
+  ],
+  "text_anchors": [
+    {
+      "text": "创建日程",
+      "role": "dialog_title",
+      "required": true
+    },
+    {
+      "text": "已填写的主题",
+      "role": "title_text",
+      "required": true
+    },
+    {
+      "text": "孙",
+      "role": "attendee_search_text",
+      "required": true
+    },
+    {
+      "text": "孙思超",
+      "role": "attendee_search_result",
+      "required": true
+    },
+    {
+      "text": "会议设置",
+      "role": "meeting_settings",
+      "required": true
+    },
+    {
+      "text": "保存",
+      "role": "save_button",
+      "required": true
+    }
+  ],
+  "key_regions": {
+    "title_input": {
+      "role": "event_title_input",
+      "visible_text": "已填写的主题"
+    },
+    "attendee_input": {
+      "role": "attendee_input",
+      "visible_text": "孙"
+    },
+    "attendee_suggestion_list": {
+      "role": "attendee_suggestion_list",
+      "description": "visible attendee candidate list after typing a name"
+    },
+    "meeting_settings": {
+      "role": "meeting_settings_link",
+      "visible_text": "会议设置"
+    },
+    "save_button": {
+      "role": "save_event_button",
+      "visible_text": "保存"
+    }
+  },
+  "annotation_status": "draft",
+  "review_status": "unreviewed"
+}

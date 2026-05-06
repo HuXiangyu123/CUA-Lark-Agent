@@ -106,7 +106,7 @@ class TestNLParser(unittest.TestCase):
         self.assertTrue(testcase["artifacts"]["semantic_guidance_only"])
         self.assertEqual(testcase["artifacts"]["intent"], "create_event")
         self.assertIn("calendar_home_ready", testcase["assertions"])
-        self.assertIn("calendar_event_modal_ready", testcase["assertions"])
+        self.assertIn("calendar_create_surface_ready", testcase["assertions"])
         self.assertEqual(testcase["artifacts"]["params"]["event_title"], "项目同步")
         self.assertEqual(testcase["artifacts"]["params"]["attendee"], "张三")
 

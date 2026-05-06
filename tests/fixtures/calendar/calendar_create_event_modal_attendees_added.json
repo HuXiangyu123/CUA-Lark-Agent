@@ -1,11 +1,11 @@
 {
-  "fixture_id": "calendar_home_after_create_click",
-  "image_file": "点击创建日程后.png",
+  "fixture_id": "calendar_event_modal_attendees_added",
+  "image_file": "calendar_create_event_modal_attendees_added.png",
   "product": "calendar",
   "page_id": "calendar_event_modal",
   "page_type": "calendar_event_modal",
-  "display_name": "Feishu Calendar Event Modal",
-  "scenario": "Calendar create-event modal after clicking the create schedule entry.",
+  "display_name": "Feishu Calendar Event Modal With Attendees Added",
+  "scenario": "Create-event modal with a filled title and selected attendees already shown in the participant list.",
   "expected_state": {
     "product": "calendar",
     "page_type": "calendar_event_modal",
@@ -17,15 +17,16 @@
   },
   "product_state": {
     "event_modal_visible": true,
-    "title_input_visible": true,
+    "title_input_filled": true,
     "attendee_input_visible": true,
+    "attendee_selected_visible": true,
     "time_controls_visible": true,
     "save_button_visible": true
   },
   "visible_targets": [
     "title_input",
     "attendee_input",
-    "time_range",
+    "attendee_chip_list",
     "save_button"
   ],
   "text_anchors": [
@@ -35,38 +36,38 @@
       "required": true
     },
     {
-      "text": "添加主题",
-      "role": "title_placeholder",
+      "text": "已填写的主题",
+      "role": "title_text",
       "required": true
     },
     {
-      "text": "添加联系人、群或邮箱",
-      "role": "attendee_placeholder",
+      "text": "参与者(2)",
+      "role": "attendee_section",
+      "required": true
+    },
+    {
+      "text": "批量添加",
+      "role": "bulk_add_attendees",
       "required": true
     },
     {
       "text": "保存",
       "role": "save_button",
       "required": true
-    },
-    {
-      "text": "取消",
-      "role": "cancel_button",
-      "required": true
     }
   ],
   "key_regions": {
     "title_input": {
       "role": "event_title_input",
-      "visible_placeholder": "添加主题"
+      "visible_text": "已填写的主题"
     },
     "attendee_input": {
       "role": "attendee_input",
       "visible_placeholder": "添加联系人、群或邮箱"
     },
-    "time_range": {
-      "role": "event_time_range",
-      "description": "event time controls"
+    "attendee_chip_list": {
+      "role": "selected_attendee_chip_list",
+      "description": "selected attendee chips shown below the attendee input"
     },
     "save_button": {
       "role": "save_event_button",

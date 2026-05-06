@@ -170,6 +170,10 @@ AssertionId = Literal[
     "doc_editor_ready",
     "doc_title_contains_text",
     "doc_body_contains_text",
+    "calendar_home_ready",
+    "calendar_event_modal_ready",
+    "calendar_quick_add_ready",
+    "calendar_create_surface_ready",
 ]
 ```
 

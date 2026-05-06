@@ -1,0 +1,85 @@
+{
+  "fixture_id": "calendar_event_modal_more_settings",
+  "image_file": "calendar_create_event_modal_more_settings.png",
+  "product": "calendar",
+  "page_id": "calendar_event_modal",
+  "page_type": "calendar_event_modal",
+  "display_name": "Feishu Calendar Event Modal More Settings",
+  "scenario": "Create-event modal scrolled to lower settings with meeting, reminder, and description controls visible.",
+  "expected_state": {
+    "product": "calendar",
+    "page_type": "calendar_event_modal",
+    "message_input_visible": false,
+    "send_button_visible": false,
+    "search_box_visible": false,
+    "modal_type": "create_event",
+    "last_error_banner": null
+  },
+  "product_state": {
+    "event_modal_visible": true,
+    "attendee_selected_visible": true,
+    "time_controls_visible": true,
+    "meeting_settings_visible": true,
+    "description_input_visible": true,
+    "reminder_controls_visible": true,
+    "save_button_visible": true
+  },
+  "visible_targets": [
+    "meeting_settings",
+    "description_input",
+    "reminder_controls",
+    "save_button"
+  ],
+  "text_anchors": [
+    {
+      "text": "创建日程",
+      "role": "dialog_title",
+      "required": true
+    },
+    {
+      "text": "飞书视频会议",
+      "role": "meeting_section",
+      "required": true
+    },
+    {
+      "text": "会议设置",
+      "role": "meeting_settings",
+      "required": true
+    },
+    {
+      "text": "添加描述",
+      "role": "description_placeholder",
+      "required": true
+    },
+    {
+      "text": "提前 5 分钟",
+      "role": "reminder_value",
+      "required": true
+    },
+    {
+      "text": "保存",
+      "role": "save_button",
+      "required": true
+    }
+  ],
+  "key_regions": {
+    "meeting_settings": {
+      "role": "meeting_settings_link",
+      "visible_text": "会议设置"
+    },
+    "description_input": {
+      "role": "event_description_input",
+      "visible_placeholder": "添加描述"
+    },
+    "reminder_controls": {
+      "role": "event_reminder_controls",
+      "visible_text": "提前 5 分钟"
+    },
+    "save_button": {
+      "role": "save_event_button",
+      "visible_text": "保存"
+    }
+  },
+  "annotation_status": "draft",
+  "review_status": "unreviewed"
+}

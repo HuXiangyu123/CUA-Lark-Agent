@@ -1,0 +1,57 @@
+{
+  "fixture_id": "calendar_date_picker_open",
+  "image_file": "calendar_date_picker_open.png",
+  "product": "calendar",
+  "page_id": "calendar_date_picker",
+  "page_type": "calendar_date_picker",
+  "display_name": "Feishu Calendar Date Picker Open",
+  "scenario": "Date picker popup opened from the Calendar header date control.",
+  "expected_state": {
+    "product": "calendar",
+    "page_type": "calendar_date_picker",
+    "message_input_visible": false,
+    "send_button_visible": false,
+    "search_box_visible": false,
+    "modal_type": "date_picker",
+    "last_error_banner": null
+  },
+  "product_state": {
+    "calendar_home_visible": true,
+    "date_picker_visible": true,
+    "month_picker_visible": true,
+    "today_shortcut_visible": true
+  },
+  "visible_targets": [
+    "date_header_control",
+    "month_picker",
+    "today_shortcut"
+  ],
+  "text_anchors": [
+    {
+      "text": "2026 年 5月",
+      "role": "month_title",
+      "required": true
+    },
+    {
+      "text": "今天",
+      "role": "today_shortcut",
+      "required": true
+    }
+  ],
+  "key_regions": {
+    "date_header_control": {
+      "role": "calendar_header_date_control",
+      "description": "opens the date picker overlay"
+    },
+    "month_picker": {
+      "role": "month_calendar_picker",
+      "description": "calendar month popup with selectable dates"
+    },
+    "today_shortcut": {
+      "role": "today_shortcut",
+      "visible_text": "今天"
+    }
+  },
+  "annotation_status": "draft",
+  "review_status": "unreviewed"
+}

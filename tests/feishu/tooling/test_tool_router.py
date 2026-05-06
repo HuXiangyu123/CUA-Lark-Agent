@@ -146,7 +146,7 @@ class TestFeishuToolRouter(unittest.TestCase):
         self.assertIn("feishu_type", recommendation.discouraged_tools)
 
     def test_calendar_surface_stays_agent_guided_not_fixed_workflow(self) -> None:
-        observation = self._calendar_observation("点击创建日程后.png")
+        observation = self._calendar_observation("calendar_create_event_modal.png")
         state = detect_calendar_state(observation)
 
         recommendation = route_feishu_tools(
@@ -173,6 +173,28 @@ class TestFeishuToolRouter(unittest.TestCase):
         )
         self.assertIn("Do not rely on precomputed coordinates", guidance)
         self.assertIn("visible title field", guidance)
+
+    def test_calendar_quick_add_is_not_mixed_with_full_create_modal(self) -> None:
+        observation = self._calendar_observation("calendar_quick_add_modal.png")
+        state = detect_calendar_state(observation)
+
+        recommendation = route_feishu_tools(
+            "在日历中点击时间创建一个会议日程",
+            observation,
+            state=state,
+        )
+        guidance = build_feishu_tool_guidance(
+            "在日历中点击时间创建一个会议日程",
+            observation,
+            state=state,
+        )
+
+        self.assertEqual(recommendation.product, "calendar")
+        self.assertEqual(recommendation.page_type, "calendar_quick_add_modal")
+        self.assertEqual(recommendation.next_step_focus, "calendar_quick_add_controls")
+        self.assertIn("calendar_quick_add_visible", recommendation.state_summary)
+        self.assertIn("time-slot quick-add popup", guidance)
+        self.assertIn("not the full Create Schedule dialog", guidance)
 
     def test_docs_home_routes_to_docs_specific_guidance_without_state(self) -> None:
         observation = self._docs_observation("主页.png")
